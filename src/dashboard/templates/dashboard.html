@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>沈知微长期陪伴系统</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body class="dashboard-page">
+  <script id="dashboard-bootstrap" type="application/json">__BOOTSTRAP_JSON__</script>
+  <div class="app-shell" id="app-shell">
+    <header class="app-header">
+      <div class="brand-block">
+        <div class="eyebrow">Memory Ops Console</div>
+        <h1>沈知微长期陪伴系统</h1>
+        <p class="lead">从外观、交互到 observability，一屏追踪当前活跃会话的状态。</p>
+      </div>
+      <div class="top-actions">
+        <div class="inline-group">
+          <label class="inline-label" for="global-search-input">全局搜索</label>
+          <input id="global-search-input" class="search-input" placeholder="搜记忆 / 任务 / turn / 错误 / request id">
+          <button id="global-search-button" class="primary">搜索</button>
+        </div>
+        <div class="inline-group">
+          <label class="inline-label" for="scope-select">当前 Scope</label>
+          <select id="scope-select" aria-label="当前 Scope"></select>
+          <button id="scope-apply-button" class="ghost" type="button">切换 Scope</button>
+        </div>
+        <div class="inline-group">
+          <label class="inline-label" for="refresh-mode-select">刷新节奏</label>
+          <select id="refresh-mode-select" aria-label="刷新节奏"></select>
+          <button id="refresh-now-button" class="ghost" type="button">立即刷新</button>
+        </div>
+        <div class="inline-group">
+          <label class="inline-label" for="theme-select">主题</label>
+          <select id="theme-select" aria-label="主题">
+            <option value="sand">Warm Sand</option>
+            <option value="ink">Ink Paper</option>
+          </select>
+          <label class="inline-label" for="density-select">密度</label>
+          <select id="density-select" aria-label="密度">
+            <option value="comfortable">舒展</option>
+            <option value="compact">紧凑</option>
+          </select>
+        </div>
+        <div class="inline-group">
+          <button id="change-password-button" class="ghost" type="button">修改密码</button>
+          <button id="logout-button" class="danger" type="button">退出登录</button>
+        </div>
+      </div>
+      <div class="status-bar">
+        <div id="scope-summary" class="status-pill"></div>
+        <div id="last-refresh-info" class="status-pill">未刷新</div>
+        <div id="panel-refresh-info" class="status-pill">当前面板：-</div>
+      </div>
+      <div id="success-banner" class="banner success hidden" role="status"></div>
+      <div id="error-banner" class="banner error hidden" role="alert"></div>
+    </header>
+
+    <nav class="tab-nav" aria-label="Dashboard Tabs">
+      <button type="button" class="tab-button active" data-tab="overview">总览</button>
+      <button type="button" class="tab-button" data-tab="search">全局搜索</button>
+      <button type="button" class="tab-button" data-tab="memories">长期记忆</button>
+      <button type="button" class="tab-button" data-tab="candidates">候选记忆</button>
+      <button type="button" class="tab-button" data-tab="turns">Turn Trace</button>
+      <button type="button" class="tab-button" data-tab="attachments">附件工件</button>
+      <button type="button" class="tab-button" data-tab="proactive">主动消息</button>
+      <button type="button" class="tab-button" data-tab="presence">沉浸状态</button>
+      <button type="button" class="tab-button" data-tab="companion-day">她的一天</button>
+      <button type="button" class="tab-button" data-tab="reality-context">现实锚点</button>
+      <button type="button" class="tab-button" data-tab="facts">Structured Facts</button>
+      <button type="button" class="tab-button" data-tab="relationships">Relationship States</button>
+      <button type="button" class="tab-button" data-tab="summaries">Summary</button>
+      <button type="button" class="tab-button" data-tab="snapshots">快照 Diff</button>
+      <button type="button" class="tab-button" data-tab="tasks">后台任务</button>
+      <button type="button" class="tab-button" data-tab="errors">错误闭环</button>
+      <button type="button" class="tab-button" data-tab="performance">性能成本</button>
+      <button type="button" class="tab-button" data-tab="health">健康趋势</button>
+      <button type="button" class="tab-button" data-tab="security">安全控制</button>
+      <button type="button" class="tab-button" data-tab="audits">审计日志</button>
+      <button type="button" class="tab-button" data-tab="logs">运行日志</button>
+    </nav>
+
+    <main id="panel-host" class="panel-host"></main>
+  </div>
+
+  <dialog id="password-dialog" class="dialog-card">
+    <form id="password-form" method="dialog" class="stack-form">
+      <h2>修改 Dashboard 密码</h2>
+      <label class="field">
+        <span>旧密码</span>
+        <input id="password-old" type="password" autocomplete="current-password">
+      </label>
+      <label class="field">
+        <span>新密码</span>
+        <input id="password-new" type="password" autocomplete="new-password">
+      </label>
+      <label class="field">
+        <span>确认新密码</span>
+        <input id="password-confirm" type="password" autocomplete="new-password">
+      </label>
+      <div class="dialog-actions">
+        <button class="ghost" value="cancel" type="button" id="password-cancel">取消</button>
+        <button class="primary" type="submit">提交</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>

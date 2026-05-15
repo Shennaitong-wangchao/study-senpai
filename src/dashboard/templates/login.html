@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>沈知微 Dashboard 登录</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body class="login-page">
+  <script id="dashboard-bootstrap" type="application/json">__BOOTSTRAP_JSON__</script>
+  <main class="login-shell">
+    <section class="login-card">
+      <div class="eyebrow">Operational Console</div>
+      <h1>沈知微 Dashboard</h1>
+      <p class="lead">安全地审阅记忆、任务、错误闭环与性能趋势。</p>
+      <form id="login-form" class="stack-form">
+        <label class="field">
+          <span>用户名</span>
+          <input id="username-input" name="username" autocomplete="username" aria-label="用户名">
+        </label>
+        <label class="field">
+          <span>密码</span>
+          <div class="password-field">
+            <input id="password-input" type="password" name="password" autocomplete="current-password" aria-label="密码">
+            <button id="toggle-password" type="button" class="ghost small">显示</button>
+          </div>
+        </label>
+        <button id="login-submit" type="submit" class="primary wide">进入 Dashboard</button>
+      </form>
+      <div id="login-error" class="banner error hidden" role="alert"></div>
+    </section>
+  </main>
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>

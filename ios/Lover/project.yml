@@ -1,0 +1,48 @@
+name: Lover
+options:
+  bundleIdPrefix: com.shennaitong
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  Lover:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/Lover
+    resources:
+      - Sources/Lover/Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shennaitong.Lover
+        PRODUCT_NAME: Lover
+        INFOPLIST_FILE: Sources/Lover/Resources/Info.plist
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: NO
+  LoverTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/LoverTests
+    dependencies:
+      - target: Lover
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shennaitong.LoverTests
+        GENERATE_INFOPLIST_FILE: YES
+  LoverUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - Tests/LoverUITests
+    dependencies:
+      - target: Lover
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shennaitong.LoverUITests
+        GENERATE_INFOPLIST_FILE: YES
