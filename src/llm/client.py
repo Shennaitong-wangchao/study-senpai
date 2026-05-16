@@ -24,6 +24,14 @@ class LLMClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
+    @property
+    def _is_anthropic_api(self) -> bool:
+        return "anthropic" in self.settings.llm_base_url.lower()
+
+    @property
+    def _use_anthropic_messages_api(self) -> bool:
+        return self._is_anthropic_api
+
     async def chat_completion(
         self,
         messages: list[dict[str, Any]],
@@ -49,6 +57,14 @@ class LLMClient:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Native search request failed: %s", exc)
                 raise LLMClientError("Native search request failed") from exc
+
+        if self._use_anthropic_messages_api:
+            return await self._anthropic_messages_completion(
+                messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
 
         payload: dict[str, Any] = {
             "model": model or self.settings.llm_model,
@@ -97,6 +113,17 @@ class LLMClient:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Native search streaming failed: %s", exc)
                 raise LLMClientError("Native search streaming failed") from exc
+
+        if self._use_anthropic_messages_api:
+            text = await self._anthropic_messages_completion(
+                messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            for chunk in self._chunk_text_for_stream(text):
+                yield chunk
+            return
 
         payload: dict[str, Any] = {
             "model": model or self.settings.llm_model,
@@ -185,9 +212,15 @@ class LLMClient:
         max_tokens: int = 700,
         reasoning_effort: str | None = None,
     ) -> str:
+        if self._is_anthropic_api:
+            raise LLMClientError(
+                "Native search requires an OpenAI Responses-compatible backend; "
+                "Anthropic OpenAI compatibility does not support /responses."
+            )
+        converted_input = self._messages_to_responses_input(messages)
         payload: dict[str, Any] = {
             "model": model or self.settings.llm_model,
-            "input": self._messages_to_responses_input(messages),
+            "input": converted_input,
             "tools": [{"type": self.settings.llm_native_search_tool_type}],
             "temperature": temperature,
             "max_output_tokens": max_tokens,
@@ -344,6 +377,44 @@ class LLMClient:
             "Content-Type": "application/json",
         }
 
+    def _build_anthropic_headers(self) -> dict[str, str]:
+        return {
+            "x-api-key": self.settings.llm_api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+
+    async def _anthropic_messages_completion(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        model: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 700,
+    ) -> str:
+        system_blocks, anthropic_messages = self._messages_to_anthropic_payload(messages)
+        payload: dict[str, Any] = {
+            "model": model or self.settings.llm_model,
+            "messages": anthropic_messages,
+            "temperature": max(0.0, min(temperature, 1.0)),
+            "max_tokens": max_tokens,
+        }
+        if system_blocks:
+            payload["system"] = system_blocks
+
+        response = await self._client.post(
+            f"{self.settings.llm_base_url}/messages",
+            headers=self._build_anthropic_headers(),
+            json=payload,
+        )
+        if not response.is_success:
+            raise LLMClientError(f"Anthropic Messages request failed [{response.status_code}]: {response.text}")
+        data = response.json()
+        content = self._extract_anthropic_text(data)
+        if not content:
+            raise LLMClientError(f"Anthropic Messages returned empty content: {data}")
+        return content.strip()
+
     def _messages_to_responses_input(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         converted: list[dict[str, Any]] = []
         for message in messages:
@@ -373,6 +444,136 @@ class LLMClient:
                 if response_parts:
                     converted.append({"role": role, "content": response_parts})
         return converted
+
+    def _messages_to_anthropic_payload(
+        self, messages: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        system_parts: list[str] = []
+        converted_messages: list[dict[str, Any]] = []
+        for message in messages:
+            role = str(message.get("role", "user")).lower()
+            content_blocks = self._to_anthropic_content_blocks(message.get("content", ""))
+            if not content_blocks:
+                continue
+            if role in {"system", "developer"}:
+                text = self._anthropic_text_from_blocks(content_blocks)
+                if text:
+                    system_parts.append(text)
+                continue
+
+            anthropic_role = "assistant" if role == "assistant" else "user"
+            if converted_messages and converted_messages[-1]["role"] == anthropic_role:
+                converted_messages[-1]["content"].append({"type": "text", "text": "\n\n"})
+                converted_messages[-1]["content"].extend(content_blocks)
+            else:
+                converted_messages.append({"role": anthropic_role, "content": content_blocks})
+
+        if not converted_messages:
+            converted_messages.append({"role": "user", "content": [{"type": "text", "text": "继续。"}]})
+
+        system_text = "\n\n".join(part for part in system_parts if part.strip())
+        return self._build_anthropic_system_blocks(system_text), converted_messages
+
+    def _to_anthropic_content_blocks(self, content: Any) -> list[dict[str, Any]]:
+        if isinstance(content, str):
+            return [{"type": "text", "text": content}] if content else []
+
+        blocks: list[dict[str, Any]] = []
+        if not isinstance(content, list):
+            return blocks
+
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") in {"text", "input_text"} and part.get("text"):
+                blocks.append({"type": "text", "text": str(part["text"])})
+                continue
+            if part.get("type") == "image_url" and part.get("image_url"):
+                image_url = part["image_url"]
+                url = image_url.get("url") if isinstance(image_url, dict) else None
+                image_block = self._anthropic_image_block_from_url(url)
+                if image_block:
+                    blocks.append(image_block)
+        return blocks
+
+    def _anthropic_image_block_from_url(self, url: str | None) -> dict[str, Any] | None:
+        if not url:
+            return None
+        if url.startswith("data:") and "," in url:
+            header, data = url.split(",", 1)
+            media_type = header[5:].split(";", 1)[0] or "image/png"
+            return {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": data,
+                },
+            }
+        if url.startswith(("http://", "https://")):
+            return {
+                "type": "image",
+                "source": {
+                    "type": "url",
+                    "url": url,
+                },
+            }
+        return None
+
+    def _anthropic_text_from_blocks(self, blocks: list[dict[str, Any]]) -> str:
+        return "\n\n".join(
+            str(block.get("text", ""))
+            for block in blocks
+            if block.get("type") == "text" and block.get("text")
+        )
+
+    def _build_anthropic_system_blocks(self, system_text: str) -> list[dict[str, Any]]:
+        if not system_text:
+            return []
+        if not self.settings.llm_prompt_caching_enabled:
+            return [{"type": "text", "text": system_text}]
+
+        static_text, dynamic_text = self._split_static_system_prefix(system_text)
+        if not static_text:
+            return [{"type": "text", "text": dynamic_text or system_text.strip()}]
+        blocks = [{"type": "text", "text": static_text, "cache_control": {"type": "ephemeral"}}]
+        if dynamic_text:
+            blocks.append({"type": "text", "text": dynamic_text})
+        return blocks
+
+    def _split_static_system_prefix(self, system_text: str) -> tuple[str, str]:
+        dynamic_markers = (
+            "[Turn Calibration]",
+            "[Anti-Generic Guard]",
+            "[Reply Strategy]",
+            "[What You Already Know]",
+            "[What You Are Already Holding]",
+            "[What Still Matters Now]",
+            "[This Turn Extra Context]",
+            "[Current Scope]",
+        )
+        marker_positions = []
+        for marker in dynamic_markers:
+            position = system_text.find(marker)
+            if position >= 0:
+                marker_positions.append(position)
+        if not marker_positions:
+            return system_text.strip(), ""
+        split_at = min(marker_positions)
+        if split_at == 0:
+            return "", system_text.strip()
+        static_text = system_text[:split_at].strip()
+        dynamic_text = system_text[split_at:].strip()
+        return static_text or system_text.strip(), dynamic_text if static_text else ""
+
+    def _extract_anthropic_text(self, payload: dict[str, Any]) -> str:
+        lines: list[str] = []
+        for content in payload.get("content", []) or []:
+            if not isinstance(content, dict):
+                continue
+            if content.get("type") == "text" and content.get("text"):
+                lines.append(str(content["text"]))
+        return "\n".join(line for line in lines if line.strip())
 
     def _extract_response_text(self, payload: dict[str, Any]) -> str:
         output_text = payload.get("output_text")

@@ -39,7 +39,7 @@ from src.product.store import ProductStore
 EXPECTED_HASHES = {
     "login": "83ddd4d79cbaa71cfb0ff64d48513705d0c569f0ae8de6788afe497e3e2121a6",
     "overview": "141e9c2b658a65bee638809c3f268d5c29bea737a24578f6e3b1a85d7bd1f5ea",
-    "candidates": "e5218b391c1d51c6e0f82cab0ae95f4e68a7b0c2407b0401dce46463fea47d63",
+    "candidates": "6daccbf672533b131d3e8ce16bc053500571b924710bf7443e41aeabf1af5b3e",
 }
 
 

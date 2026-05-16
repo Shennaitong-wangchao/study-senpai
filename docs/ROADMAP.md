@@ -14,7 +14,7 @@ This roadmap keeps the project useful as a local-first framework while preparing
 
 - Tighten pre-publish sensitive file checks.
 - Improve README first-screen positioning for GitHub visitors.
-- Add public demo recording scripts and GIF placeholders.
+- Add public demo recordings after they are captured from a clean demo database.
 - Add GitHub issue, pull request, conduct, changelog, and CI hygiene files.
 - Keep CI lightweight: install Python dependencies and run contract/smoke scripts.
 

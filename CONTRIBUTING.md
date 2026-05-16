@@ -54,4 +54,4 @@ Include:
 
 ## Persona Changes
 
-沈知微 is the default example persona. Keep persona changes isolated and documented. The planned direction is a YAML/JSON persona registry; see `docs/PERSONA_SYSTEM.md`.
+沈知微 is the default example persona. Keep persona changes isolated and documented. The planned direction is a YAML/JSON persona registry; see `docs/PERSONA_SYSTEM_PUBLIC.md`.

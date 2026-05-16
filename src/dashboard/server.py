@@ -1727,7 +1727,6 @@ def build_dashboard_app(
     @app.get("/api/performance", response_model=PerformanceResponse)
     async def performance(scope_mode: str = "all") -> PerformanceResponse:
         active_scope = current_scope_snapshot()
-        # P0-5: 这里也需要把 conversation_id 传给 get_performance_summary 和 get_experience_summary
         conv_id = active_scope["conversation_id"] if scope_mode == "active" and active_scope else None
         turns = product_store.list_recent_turns(
             conversation_id=conv_id,

@@ -33,7 +33,6 @@ ACTIONABLE_OPEN_LOOP_TOKENS = (
     "考试",
     "代码",
     "项目",
-    "Cogniflow",
     "提交",
     "修",
     "写",

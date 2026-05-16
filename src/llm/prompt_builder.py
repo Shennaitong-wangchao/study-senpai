@@ -118,8 +118,9 @@ class PromptBuilder:
         "personal_fact": 0.58,
         "recurring_pattern": 0.66,
     }
+    # Stable sections stay first so provider-side prefix caching remains useful.
     STANDARD_BUDGET = PromptBudget(
-        system_char_budget=3800,
+        system_char_budget=4700,
         history_char_budget=1800,
         history_message_limit=6,
         recent_message_char_limit=280,
@@ -139,7 +140,7 @@ class PromptBuilder:
         memory_line_char_limit=84,
         session_line_char_limit=58,
         summary_line_char_limit=90,
-        persona_section_char_limit=1350,
+        persona_section_char_limit=2200,
         style_section_char_limit=320,
         guard_section_char_limit=170,
         strategy_section_char_limit=220,
@@ -147,10 +148,10 @@ class PromptBuilder:
         commitment_section_char_limit=360,
         turn_focus_section_char_limit=240,
         extra_context_section_char_limit=500,
-        memory_note_section_char_limit=180,
+        memory_note_section_char_limit=280,
     )
     COMPACT_BUDGET = PromptBudget(
-        system_char_budget=2500,
+        system_char_budget=3200,
         history_char_budget=900,
         history_message_limit=4,
         recent_message_char_limit=180,
@@ -170,7 +171,7 @@ class PromptBuilder:
         memory_line_char_limit=64,
         session_line_char_limit=48,
         summary_line_char_limit=68,
-        persona_section_char_limit=980,
+        persona_section_char_limit=1500,
         style_section_char_limit=180,
         guard_section_char_limit=110,
         strategy_section_char_limit=140,
@@ -178,7 +179,7 @@ class PromptBuilder:
         commitment_section_char_limit=220,
         turn_focus_section_char_limit=180,
         extra_context_section_char_limit=260,
-        memory_note_section_char_limit=120,
+        memory_note_section_char_limit=200,
     )
 
     def __init__(self, persona_profile: PersonaProfile) -> None:
@@ -220,13 +221,6 @@ class PromptBuilder:
 
         system_sections: list[tuple[str, str, int]] = [
             ("System Prompt", build_persona_system_prompt(self.persona_profile), budget.persona_section_char_limit),
-            ("Turn Calibration", render_style_calibration(style_calibration), budget.style_section_char_limit),
-            ("Anti-Generic Guard", render_anti_generic_guard(style_calibration), budget.guard_section_char_limit),
-            ("Reply Strategy", strategy_note or "", budget.strategy_section_char_limit),
-            ("What You Already Know", stable_ground, budget.stable_ground_section_char_limit),
-            ("What You Are Already Holding", commitment_bridge, budget.commitment_section_char_limit),
-            ("What Still Matters Now", turn_focus, budget.turn_focus_section_char_limit),
-            ("This Turn Extra Context", extra_context, budget.extra_context_section_char_limit),
             (
                 "Memory Use Note",
                 (
@@ -237,6 +231,13 @@ class PromptBuilder:
                 ),
                 budget.memory_note_section_char_limit,
             ),
+            ("Turn Calibration", render_style_calibration(style_calibration), budget.style_section_char_limit),
+            ("Anti-Generic Guard", render_anti_generic_guard(style_calibration), budget.guard_section_char_limit),
+            ("Reply Strategy", strategy_note or "", budget.strategy_section_char_limit),
+            ("What You Already Know", stable_ground, budget.stable_ground_section_char_limit),
+            ("What You Are Already Holding", commitment_bridge, budget.commitment_section_char_limit),
+            ("What Still Matters Now", turn_focus, budget.turn_focus_section_char_limit),
+            ("This Turn Extra Context", extra_context, budget.extra_context_section_char_limit),
             ("Current Scope", f"conversation_id={scope.conversation_id}\nsession_id={scope.session_id}", 96),
         ]
 

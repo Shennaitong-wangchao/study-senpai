@@ -47,6 +47,7 @@ deploy/**/*.env
 # Local/private persona prompt drafts and seed memory data.
 docs/PERSONA_SYSTEM.md
 src/seed_tavo_memory.py
+src/memory/bootstrap.py
 *_PRIVATE_PROMPT.md
 *private_prompt*.md
 *personal_prompt*.md

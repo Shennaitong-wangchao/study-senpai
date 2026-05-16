@@ -57,6 +57,7 @@ class Settings:
     llm_search_model: str | None
     llm_native_search_enabled: bool
     llm_native_search_tool_type: str
+    llm_prompt_caching_enabled: bool
     llm_vision_model: str | None
     llm_audio_model: str | None
     llm_image_model: str | None
@@ -213,6 +214,7 @@ class Settings:
             llm_search_model=os.getenv("LLM_SEARCH_MODEL") or None,
             llm_native_search_enabled=_parse_bool(os.getenv("LLM_NATIVE_SEARCH_ENABLED"), True),
             llm_native_search_tool_type=os.getenv("LLM_NATIVE_SEARCH_TOOL_TYPE", "web_search_preview"),
+            llm_prompt_caching_enabled=_parse_bool(os.getenv("LLM_PROMPT_CACHING_ENABLED"), True),
             llm_vision_model=os.getenv("LLM_VISION_MODEL") or None,
             llm_audio_model=os.getenv("LLM_AUDIO_MODEL") or None,
             llm_image_model=os.getenv("LLM_IMAGE_MODEL") or None,
@@ -291,9 +293,9 @@ class Settings:
             day_generated_image_enabled=_parse_bool(os.getenv("DAY_GENERATED_IMAGE_ENABLED"), False),
             reality_context_enabled=_parse_bool(os.getenv("REALITY_CONTEXT_ENABLED"), True),
             weather_provider=(os.getenv("WEATHER_PROVIDER", "open_meteo") or "open_meteo").strip().lower(),
-            weather_location_label=(os.getenv("WEATHER_LOCATION_LABEL", "河北省廊坊市大城县") or "河北省廊坊市大城县").strip(),
-            weather_latitude=_parse_float(os.getenv("WEATHER_LATITUDE"), 38.6995),
-            weather_longitude=_parse_float(os.getenv("WEATHER_LONGITUDE"), 116.6371),
+            weather_location_label=(os.getenv("WEATHER_LOCATION_LABEL", "Beijing") or "Beijing").strip(),
+            weather_latitude=_parse_float(os.getenv("WEATHER_LATITUDE"), 39.9042),
+            weather_longitude=_parse_float(os.getenv("WEATHER_LONGITUDE"), 116.4074),
             calendar_ics_urls=_parse_csv(os.getenv("CALENDAR_ICS_URLS")),
             calendar_lookahead_hours=_parse_int(os.getenv("CALENDAR_LOOKAHEAD_HOURS"), 48),
             reality_refresh_minutes=_parse_int(os.getenv("REALITY_REFRESH_MINUTES"), 30),

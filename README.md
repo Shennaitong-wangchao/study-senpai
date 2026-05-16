@@ -1,38 +1,26 @@
 # Study Senpai
 
-Local-first AI companion framework for learning, memory, and proactive care.
+Local-first companion framework for learning, memory, and proactive care.
 
 Study Senpai is a self-hosted Python + SQLite companion system with an iOS client, Discord bot path, and auditable Dashboard. It is built for people who want learning support and long-running memory while keeping state under their own control.
 
-## Core Value
+## What Is Included
 
-- **Auditable long-term memory**: review, approve, archive, restore, and inspect memory candidates before they influence future replies.
-- **Study companion workflows**: learning mode, attachments, reminders, proactive nudges, and session summaries support sustained study routines.
-- **iOS + Discord + Dashboard experience**: use the iOS app or Discord for chat, then inspect state and memory decisions in the Dashboard.
+- Python backend with SQLite persistence.
+- FastAPI Dashboard for memory review, observability, and local operations.
+- Mobile API used by the SwiftUI iOS client under `ios/Lover/`.
+- Optional Discord bot runtime.
+- Memory extraction, review, archive/restore, summaries, and proactive check-in flows.
 
-## Demo Placeholders
+沈知微 is included as the default example persona. Treat it as sample product behavior, not a fixed hosted service identity.
 
-| Demo | GIF placeholder | What it should show |
-| --- | --- | --- |
-| iOS chat demo | `docs/assets/demo-ios-chat.gif` | Mobile chat, streaming reply, and local backend configuration |
-| Memory dashboard demo | `docs/assets/demo-memory-dashboard.gif` | Candidate review, memory audit, archive, and restore |
-| Study workflow demo | `docs/assets/demo-study-workflow.gif` | Learning mode, study planning, and a proactive check-in |
+## Status
 
-## Who Is This For?
-
-- Builders experimenting with local-first AI companions.
-- Learners who want a study partner with inspectable memory instead of opaque cloud state.
-- Researchers and hobbyists exploring persona, memory governance, and proactive care workflows.
-- Self-hosters who are comfortable running a Python backend and keeping private data local.
-
-## What Makes It Different?
-
-- **User-controlled state**: SQLite, logs, generated artifacts, and memory exports stay local unless you choose to deploy or sync them.
-- **Memory is reviewable**: memory candidates and structured facts can be inspected before becoming durable context.
-- **Multi-endpoint by design**: the same backend serves Discord, Dashboard, and iOS/mobile flows.
-- **Persona is explicit**: 沈知微 is included as the default example persona, not a fixed product identity.
+This is an early source release. It is suitable for local development and personal self-hosting, but production deployment still needs normal operator work: TLS, reverse proxy or firewall rules, backups, token rotation, and monitoring.
 
 ## Quick Start
+
+Use Python 3.11 or newer. The CI workflow currently tests with Python 3.11.
 
 ```bash
 python3 -m venv .venv
@@ -80,6 +68,8 @@ Required for backend replies:
 - `LLM_API_KEY`: model provider key. Keep it in `.env`; never commit it.
 - `LLM_MODEL`: default model name.
 - `LLM_BASE_URL`: optional OpenAI-compatible API base URL.
+- `LLM_PROMPT_CACHING_ENABLED`: defaults to `true`; keeps static prompt content first for OpenAI-style automatic caching
+  and uses Anthropic native cache breakpoints when `LLM_BASE_URL` points at Anthropic.
 
 Discord path:
 

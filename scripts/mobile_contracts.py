@@ -65,7 +65,7 @@ def main() -> None:
         )
         client = TestClient(app)
         remote_client = build_test_client(app, client_addr=("203.0.113.10", 49152))
-        remote_without_token = remote_client.get("/mobile/bootstrap", headers={"host": "example.com"})
+        remote_without_token = remote_client.get("/mobile/bootstrap", headers={"host": "public.test"})
         if remote_without_token.status_code != 403:
             raise AssertionError(
                 f"mobile no-token remote gate expected 403, got {remote_without_token.status_code}"

@@ -307,7 +307,6 @@ class ReplyService:
             return self.settings.llm_reply_reasoning_effort or None
         return None
 
-    # P0-2: max_tokens 受控区间上限，由风格校准器控制的基准最大值
     _MAX_TOKENS_SCENE_CAP: int = 2048
 
     def _apply_plan_to_style(
@@ -315,14 +314,12 @@ class ReplyService:
         style: ReplyStyleCalibration,
         plan: ReplyPlan,
     ) -> ReplyStyleCalibration:
-        # P0-2: 各场景只做小幅上调，不超过 _MAX_TOKENS_SCENE_CAP
-        # 原代码把 max_tokens 抬到 8k-12k 会导致超长回复、尾延迟飙升与成本失控
         if plan.scene == "学习辅导":
             style.guidance_priority = min(style.guidance_priority + 0.22, 1.0)
             style.sentence_style = "解释时分步骤一点，但别冷。"
             style.pacing_hint = "先讲当前最关键的一步，再带着继续想。"
             style.response_arc = "先说结论或切入口，再把推理铺开。"
-            style.max_tokens = min(max(style.max_tokens, style.max_tokens), self._MAX_TOKENS_SCENE_CAP)
+            style.max_tokens = min(style.max_tokens, self._MAX_TOKENS_SCENE_CAP)
         elif plan.scene == "情绪安慰":
             style.soothing_priority = min(style.soothing_priority + 0.2, 1.0)
             style.sentence_style = "中短句，先接住，再往下多陪半步，别写成空安慰。"

@@ -120,9 +120,9 @@ class FakeLLMClient:
                     "safety_note": "single follow-up",
                 }
             return {
-                "content": "（我从屏幕前抬头）\n我记着你等会儿还有复盘 Cogniflow，先来陪你稳一下。看到回我一句。",
-                "trigger_type": "day_reality_anchor" if "复盘 Cogniflow" in user_prompt else "day_life_share",
-                "event_type": "reality_anchor" if "复盘 Cogniflow" in user_prompt else "life_fragment",
+                "content": "（我从屏幕前抬头）\n我记着你等会儿还有项目复盘，先来陪你稳一下。看到回我一句。",
+                "trigger_type": "day_reality_anchor" if "项目复盘" in user_prompt else "day_life_share",
+                "event_type": "reality_anchor" if "项目复盘" in user_prompt else "life_fragment",
                 "response_expected": True,
                 "expectation_level": "clear",
                 "emotion_delta": {"longing": 0.07, "tenderness": 0.04},
@@ -218,9 +218,9 @@ def ensure_required_env(temp_dir: Path) -> None:
     os.environ["OBSERVABILITY_CONTENT_PREVIEW_CHARS"] = "160"
     os.environ["REALITY_CONTEXT_ENABLED"] = "true"
     os.environ["WEATHER_PROVIDER"] = "open_meteo"
-    os.environ["WEATHER_LOCATION_LABEL"] = "河北省廊坊市大城县"
-    os.environ["WEATHER_LATITUDE"] = "38.6995"
-    os.environ["WEATHER_LONGITUDE"] = "116.6371"
+    os.environ["WEATHER_LOCATION_LABEL"] = "Beijing"
+    os.environ["WEATHER_LATITUDE"] = "39.9042"
+    os.environ["WEATHER_LONGITUDE"] = "116.4074"
     os.environ["CALENDAR_ICS_URLS"] = ""
     os.environ["CALENDAR_LOOKAHEAD_HOURS"] = "48"
     os.environ["REALITY_REFRESH_MINUTES"] = "30"
@@ -652,7 +652,7 @@ def verify_reality_context(
 VERSION:2.0
 BEGIN:VEVENT
 UID:timed-verify
-SUMMARY:复盘 Cogniflow
+SUMMARY:项目复盘
 DTSTART:{ics_timestamp(timed_start)}
 DTEND:{ics_timestamp(timed_end)}
 LOCATION:线上
@@ -672,7 +672,7 @@ RRULE:FREQ=DAILY;COUNT=2
 END:VEVENT
 END:VCALENDAR
 """
-    raw_url = "https://calendar.example/private.ics?token=secret-token"
+    raw_url = "https://calendar.test/private.ics?token=secret-token"
 
     async def fake_ics_text(url: str) -> str:
         if "secret-token" not in url:
@@ -697,7 +697,7 @@ END:VCALENDAR
         raise AssertionError(f"weather summary missing: {payload}")
     events = payload["items"]
     titles = {item["title"] for item in events}
-    for expected in {"复盘 Cogniflow", "全天整理", "喝水伸展", "手动补的晚间收尾"}:
+    for expected in {"项目复盘", "全天整理", "喝水伸展", "手动补的晚间收尾"}:
         if expected not in titles:
             raise AssertionError(f"calendar event {expected!r} missing from reality context: {events}")
     context_block = service.build_context_block(scope)
@@ -714,7 +714,7 @@ END:VCALENDAR
     assert_panel_envelope(reality_payload, "reality context endpoint")
     location_response = client.patch(
         "/api/reality-context/location",
-        json={"label": "河北省廊坊市大城县", "latitude": 38.6995, "longitude": 116.6371},
+        json={"label": "Beijing", "latitude": 39.9042, "longitude": 116.4074},
         headers=auth_headers,
     )
     assert_status(location_response, 200, "reality location patch")
@@ -1358,7 +1358,7 @@ def verify_proactive_planner_sanitizes_abstract_commitment(
         scope,
         memory_type="commitment_record",
         category="relationship",
-        content="沈知微承诺成为用户最稳固的后方和确定感，无论外部世界如何变化或Cogniflow面临困难，她都会是他的依靠。",
+        content="沈知微承诺成为用户最稳固的后方和确定感，无论外部世界如何变化或项目遇到困难，她都会是他的依靠。",
         tags=["relationship"],
         confidence=0.9,
         importance=0.9,
@@ -1373,7 +1373,7 @@ def verify_proactive_planner_sanitizes_abstract_commitment(
         raise AssertionError(f"abstract commitment should not become open-loop trigger: {plan}")
     if message != "（我抬头看了眼屏幕）我刚才想起你，就过来碰你一下。你在的话回我一声。":
         raise AssertionError(f"proactive did not use the model draft exactly: {message}")
-    for forbidden in ("沈知微承诺", "用户最稳固", "Cogniflow面临困难", "依靠。。"):
+    for forbidden in ("沈知微承诺", "用户最稳固", "项目遇到困难", "依靠。。"):
         if forbidden in message:
             raise AssertionError(f"proactive message leaked abstract commitment memory: {message}")
 
@@ -1414,7 +1414,7 @@ def verify_proactive_preferences_cadence_and_context(
     user_message = memory_store.insert_message(
         scope,
         sender_type="user",
-        content="我等会儿要继续写 Cogniflow，先记一下。",
+        content="我等会儿要继续写项目，先记一下。",
         context=MessageContext(platform_message_id="proactive-cadence-user", author_id=scope.user_id),
         metadata={},
     )
@@ -1422,7 +1422,7 @@ def verify_proactive_preferences_cadence_and_context(
     product_store.db.execute("UPDATE messages SET created_at = ? WHERE id = ?", (old_at, user_message.id))
     memory_store.insert_summary(
         scope,
-        content="用户最近在推进 Cogniflow，也希望沈知微提醒得克制一点。",
+        content="用户最近在推进项目，也希望沈知微提醒得克制一点。",
         message_start_id=user_message.id,
         message_end_id=user_message.id,
         message_count=1,
@@ -1432,7 +1432,7 @@ def verify_proactive_preferences_cadence_and_context(
         scope,
         memory_type="project_context",
         category="project",
-        content="用户正在推进 Cogniflow，需要提醒但不希望太频繁。",
+        content="用户正在推进项目，需要提醒但不希望太频繁。",
         tags=["project", "cogniflow"],
         confidence=0.9,
         importance=0.8,

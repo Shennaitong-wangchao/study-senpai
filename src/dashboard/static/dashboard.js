@@ -101,7 +101,6 @@
     const response = await fetch(url, requestOptions);
     const duration = performance.now() - started;
     if (response.status === 401) {
-      // P0-4: 如果已经在登录页，不需要（也不能）做跳转，否则错误提示会被刷掉
       if (window.location.pathname !== "/login") {
         window.location.href = "/login";
       }
@@ -1553,7 +1552,7 @@
         <div class="panel-header">
           <div>
             <h2>运行日志</h2>
-            <div class="panel-subtitle">支持关键字过滤、下载和复制。P2-1: 下载的链接是基于当前上方筛选条件的切片，如未筛选则是全量。P2-2: 行号仅供界面参考，并非原日志文件真实行号。</div>
+            <div class="panel-subtitle">支持关键字过滤、下载和复制。下载内容使用当前筛选条件；行号仅用于当前视图。</div>
           </div>
           <div class="chip-row">
             <a class="ghost small" href="${escapeHtml(downloadUrl)}">下载日志</a>
@@ -1831,7 +1830,6 @@
       state.panels.search.q = state.globalQuery;
       switchTab("search");
     });
-    // P1-2: 搜索框直接回车搜索
     document.getElementById("global-search-input").addEventListener("keypress", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
