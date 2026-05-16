@@ -48,7 +48,7 @@ Important boundaries:
 - `src/persona/`
 - `src/llm/prompts/`
 
-The planned direction is a data-driven persona registry. See `docs/PERSONA_SYSTEM.md`.
+The planned direction is a data-driven persona registry. See `docs/PERSONA_SYSTEM_PUBLIC.md`.
 
 ## Security Boundary
 

@@ -135,7 +135,7 @@ docs/            Architecture, roadmap, operations, demos
 
 ## Persona
 
-沈知微 is the default example persona. The current implementation keeps that persona in Python modules under `src/persona/` and prompt files under `src/llm/prompts/`. See [docs/PERSONA_SYSTEM.md](docs/PERSONA_SYSTEM.md) for the planned YAML/JSON persona registry direction.
+沈知微 is the default example persona. The current implementation keeps that persona in Python modules under `src/persona/` and prompt files under `src/llm/prompts/`. See [docs/PERSONA_SYSTEM_PUBLIC.md](docs/PERSONA_SYSTEM_PUBLIC.md) for the planned YAML/JSON persona registry direction.
 
 ## Security And Privacy
 
