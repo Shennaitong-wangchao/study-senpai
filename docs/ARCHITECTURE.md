@@ -1,61 +1,80 @@
-# Architecture
+# 架构 / Architecture
+
+## 中文优先
+
+Study Senpai 是一个本地优先的陪伴系统框架，围绕一个 Python 后端和多个用户入口构建。
+
+## 运行入口
+
+- **Discord**：`src/bot/` 接收 Discord 消息，并路由到陪伴服务。
+- **Dashboard**：`src/dashboard/server.py` 暴露 FastAPI 路由，用于审核、可观测性、记忆治理和运维。
+- **Mobile API**：`/mobile/*` 路由运行在 Dashboard app 内，复用同一组 store 和 service。
+- **iOS**：`ios/Lover/` 是 SwiftUI 客户端，支持移动聊天、时间线、附件、设置和 Dashboard 面板。
+
+## 核心后端流程
+
+1. 用户消息从 Discord 或 `/mobile/chat/stream` 进入。
+2. `CompanionService` 写入用户消息、更新 presence、规划工具并构建回复上下文。
+3. `ReplyService` 通过 `LLMClient` 调用配置好的 LLM。
+4. 助手消息写入 SQLite。
+5. 后台后处理提取候选记忆、摘要、事实、关系状态和可观测性指标。
+6. Dashboard/mobile 视图从同一套 SQLite store 读取数据进行审核和展示。
+
+## 存储
+
+SQLite 是默认本地存储：
+
+- 聊天消息和会话。
+- 长期记忆和候选记忆。
+- 结构化事实和关系状态。
+- Dashboard 审计/安全事件。
+- 后台任务和产品可观测性。
+
+第一阶段开源打包不改变数据库 schema。
+
+## 配置
+
+后端配置通过 `src/core/settings.py` 从环境变量读取。本地密钥应放在 `.env`，该文件已被 git 忽略。
+
+关键边界：
+
+- `DATABASE_PATH` 和 `LOG_FILE_PATH` 控制本地状态路径。
+- `MOBILE_API_TOKEN` 在 localhost/dev 之外保护 `/mobile/*`。
+- `DASHBOARD_AUTH_*` 控制 Dashboard 登录和 session 行为。
+- `RUN_DISCORD_BOT`、`RUN_BACKGROUND_WORKER` 和 `DASHBOARD_ENABLED` 控制运行角色。
+
+## 人格
+
+沈知微是默认示例人格。当前实现位于：
+
+- `src/persona/`
+- `src/llm/prompts/`
+
+计划方向是数据驱动的人格注册表，见 `docs/PERSONA_SYSTEM_PUBLIC.md`。
+
+## 安全边界
+
+Dashboard 认证和 Mobile Token 认证是分开的：
+
+- Dashboard 路由使用 session auth 和 CSRF 检查。
+- 设置 `MOBILE_API_TOKEN` 时，`/mobile/*` 使用 Bearer Token 认证。
+- 空 Mobile Token 模式仅用于 localhost/dev。
+
+未设置 Dashboard auth、`MOBILE_API_TOKEN` 和网络层保护前，不要将后端公开暴露。
+
+## English fallback
 
 Study Senpai is a local-first companion framework built around one Python backend and multiple user surfaces.
 
-## Runtime Paths
+Runtime paths:
 
 - **Discord**: `src/bot/` receives Discord messages and routes them into the companion service.
 - **Dashboard**: `src/dashboard/server.py` exposes FastAPI routes for review, observability, memory governance, and operations.
 - **Mobile API**: `/mobile/*` routes live in the Dashboard app and reuse the same stores and services.
 - **iOS**: `ios/Lover/` is a SwiftUI client for mobile chat, timeline, attachments, settings, and dashboard panels.
 
-## Core Backend Flow
+Core flow: a message enters through Discord or `/mobile/chat/stream`, `CompanionService` stores it and builds context, `ReplyService` calls the configured LLM, the assistant message is stored in SQLite, and background jobs extract memories, summaries, facts, relationship state, and observability metrics.
 
-1. A user message arrives from Discord or `/mobile/chat/stream`.
-2. `CompanionService` writes the user message, updates presence, plans tools, and builds reply context.
-3. `ReplyService` calls the configured LLM through `LLMClient`.
-4. The assistant message is stored in SQLite.
-5. Background post-processing extracts candidate memories, summaries, facts, relationship state, and observability metrics.
-6. Dashboard/mobile views read the same SQLite-backed stores for review and display.
+SQLite stores messages, memories, structured facts, relationship states, dashboard audit/security events, background tasks, and product observability. The first open-source phase does not change database schema.
 
-## Storage
-
-SQLite is the default local store:
-
-- Chat messages and sessions.
-- Long-term memories and candidate memories.
-- Structured facts and relationship states.
-- Dashboard audit/security events.
-- Background tasks and product observability.
-
-The first open-source phase does not change database schema.
-
-## Configuration
-
-Backend configuration is environment-driven through `src/core/settings.py`. Local secrets belong in `.env`, which is ignored by git.
-
-Important boundaries:
-
-- `DATABASE_PATH` and `LOG_FILE_PATH` control local state paths.
-- `MOBILE_API_TOKEN` gates `/mobile/*` outside localhost/dev.
-- `DASHBOARD_AUTH_*` controls Dashboard login and session behavior.
-- `RUN_DISCORD_BOT`, `RUN_BACKGROUND_WORKER`, and `DASHBOARD_ENABLED` control runtime roles.
-
-## Persona
-
-沈知微 is the default example persona. Today it is implemented in Python modules and prompt files:
-
-- `src/persona/`
-- `src/llm/prompts/`
-
-The planned direction is a data-driven persona registry. See `docs/PERSONA_SYSTEM_PUBLIC.md`.
-
-## Security Boundary
-
-Dashboard auth and mobile token auth are separate:
-
-- Dashboard routes use session auth and CSRF checks.
-- `/mobile/*` uses Bearer token auth when `MOBILE_API_TOKEN` is set.
-- Empty mobile token mode is for localhost/dev only.
-
-Do not expose the backend publicly without setting Dashboard auth, `MOBILE_API_TOKEN`, and network-level protection.
+Environment-driven configuration lives in `src/core/settings.py`. Keep local secrets in ignored `.env` files. Do not expose the backend publicly without Dashboard auth, `MOBILE_API_TOKEN`, and network-level protection.

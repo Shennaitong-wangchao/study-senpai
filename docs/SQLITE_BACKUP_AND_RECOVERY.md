@@ -1,4 +1,6 @@
-# SQLite 备份 / 导出 / 恢复手册
+# SQLite 备份 / 导出 / 恢复手册 / Backup, Export, and Recovery
+
+## 中文优先
 
 ## 适用范围
 
@@ -90,3 +92,27 @@ sqlite3 data/shen_zhiwei.sqlite3 < data/exports/shen_zhiwei.sql
 - 定期保留一份只读归档备份，不和当前工作库放在同一路径。
 - 数据库目录同时会包含 `dashboard_bootstrap_password.txt` 这类本地敏感文件，备份时请一起考虑权限控制。
 - 如果你准备做大规模数据修复，先导出 SQL，再做结构化修改，避免只剩单一快照。
+
+---
+
+## English fallback
+
+Study Senpai stores core state in the SQLite database pointed to by `DATABASE_PATH`, with possible `-wal` and `-shm` sidecar files.
+
+High-value tables include `messages`, `long_term_memories`, `candidate_memories`, `structured_facts`, `relationship_states`, `background_tasks`, `dashboard_security_events`, and `dashboard_action_audits`.
+
+Recommended backup cadence:
+
+- Local development: back up before structural changes.
+- Long-running or online usage: at least daily cold backup.
+- Before schema migrations, bulk imports, or manual cleanup: take an immediate backup.
+
+Prefer SQLite online backup for running instances:
+
+```bash
+sqlite3 data/shen_zhiwei.sqlite3 ".backup 'data/backups/shen_zhiwei-$(date +%Y%m%d-%H%M%S).sqlite3'"
+```
+
+For full restore, stop bot/dashboard/worker, preserve the damaged database, copy the latest known-good backup into `DATABASE_PATH`, restart, then run `python3 scripts/verify_product.py` and inspect Dashboard.
+
+The database directory may also contain local sensitive files such as `dashboard_bootstrap_password.txt`; protect backup permissions accordingly.

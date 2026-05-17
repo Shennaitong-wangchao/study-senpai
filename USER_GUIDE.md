@@ -1,4 +1,6 @@
-# 沈知微长期陪伴系统使用手册
+# 沈知微长期陪伴系统使用手册 / User Guide
+
+## 中文优先
 
 这份说明按“你一个人长期使用”的真实场景来写。
 
@@ -1154,3 +1156,29 @@ cp data/shen_zhiwei.sqlite3 data/shen_zhiwei.backup.sqlite3
 ```
 
 11. 最后开始正常聊
+
+---
+
+## English fallback
+
+This guide is written primarily for a single long-term user running Study Senpai as a personal companion system.
+
+The shortest path is:
+
+1. Copy `.env.example` to `.env`.
+2. Fill `DISCORD_BOT_TOKEN`, `LLM_API_KEY`, and `LLM_MODEL`.
+3. Install dependencies with `python3 -m pip install -r requirements.txt`.
+4. Run `python3 scripts/verify_product.py`.
+5. Start with `python3 -m src.main`.
+6. Open the local Dashboard at `http://127.0.0.1:8099`.
+7. Use Discord DM as the primary chat entry.
+
+The system supports long-term DM chat, stable persona behavior, memory candidates, summaries, images, audio, documents, study mode, search-style replies, image generation, proactive messages, and Dashboard-based observation/review.
+
+Key safety notes:
+
+- Keep secrets in `.env`, never in git.
+- Use a test database when experimenting with memory behavior.
+- Review candidate and long-term memories in Dashboard.
+- Back up `data/shen_zhiwei.sqlite3` before major upgrades.
+- See `docs/OPERATIONS_RUNBOOK.md` for operational checks and `docs/SQLITE_BACKUP_AND_RECOVERY.md` for backup/restore details.

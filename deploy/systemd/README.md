@@ -1,4 +1,6 @@
-# systemd 部署说明
+# systemd 部署说明 / Deployment Notes
+
+## 中文优先
 
 ## 1. 推荐目录
 
@@ -41,7 +43,7 @@ DASHBOARD_PORT=8099
 
 模板文件：
 
-[`shen-zhiwei-bot.service`](/Users/shennaitong/Desktop/ai-gf-zhiwei/deploy/systemd/shen-zhiwei-bot.service)
+[`shen-zhiwei-bot.service`](./shen-zhiwei-bot.service)
 
 需要至少改这几项：
 
@@ -105,3 +107,22 @@ sudo systemctl restart shen-zhiwei-bot
 ```bash
 sudo systemctl stop shen-zhiwei-bot
 ```
+
+---
+
+## English fallback
+
+Place the project under a stable directory such as `/opt/shen-zhiwei-bot`, with `.env`, `.venv`, `src/`, and `requirements.txt` present.
+
+`DASHBOARD_HOST=127.0.0.1` only listens on the server loopback address. To access Dashboard from an external browser, set `DASHBOARD_HOST=0.0.0.0`, then protect the service with firewall rules, Nginx/Caddy auth, or an SSH tunnel.
+
+Update [`shen-zhiwei-bot.service`](./shen-zhiwei-bot.service) for `User`, `Group`, `WorkingDirectory`, `EnvironmentFile`, and `ExecStart`, then install it with:
+
+```bash
+sudo cp deploy/systemd/shen-zhiwei-bot.service /etc/systemd/system/shen-zhiwei-bot.service
+sudo systemctl daemon-reload
+sudo systemctl enable shen-zhiwei-bot
+sudo systemctl start shen-zhiwei-bot
+```
+
+Use `systemctl status`, `journalctl -u shen-zhiwei-bot -f`, and `curl http://127.0.0.1:8099` for basic diagnosis.

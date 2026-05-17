@@ -1,8 +1,27 @@
-# Changelog
+# 更新日志 / Changelog
 
-All notable changes to Study Senpai will be documented in this file.
+## 中文优先
 
-This project follows a simple human-readable changelog until release tags are introduced.
+所有值得记录的 Study Senpai 变更都会写在这里。在正式 release tag 引入前，本项目先使用简单、可读的人类维护版更新日志。
+
+## 未发布
+
+- 将项目整理为 Study Senpai 的初始公开 GitHub 发布形态。
+- 增加本地优先 README 定位和 demo 录制说明。
+- 增加最小 `/mobile/*` Bearer Token 文档和发布安全说明。
+- 增加 GitHub hygiene 文件和轻量 CI 工作流。
+- 保留沈知微作为默认示例人格。
+- 将主要 Markdown 文档调整为中文优先、英文备用。
+
+## 0.1.0 - 计划中
+
+- 第一个公开源码版本。
+- 基线 Python 后端、Dashboard、Discord 路径和 iOS 客户端路径。
+- 可审计记忆工作流和学习陪伴流程。
+
+## English fallback
+
+All notable Study Senpai changes are documented here. Until release tags are introduced, the project uses a simple human-readable changelog.
 
 ## Unreleased
 
@@ -11,6 +30,7 @@ This project follows a simple human-readable changelog until release tags are in
 - Added minimal `/mobile/*` Bearer token documentation and release safety notes.
 - Added GitHub hygiene files and lightweight CI workflow.
 - Kept 沈知微 as the default example persona.
+- Made primary Markdown docs Chinese-first with English fallback.
 
 ## 0.1.0 - Planned
 

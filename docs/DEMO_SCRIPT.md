@@ -1,121 +1,135 @@
-# Demo Script
+# Demo 录制脚本 / Demo Script
+
+## 中文优先
+
+这些脚本用于公开 README GIF。录制时只能使用临时数据库和假数据。不要录入真实聊天历史、记忆行、token、cookie、私有后端地址或个人位置。
+
+## Demo 1：iOS 聊天演示
+
+**录制目标**：展示 iOS 客户端能连接本地 Study Senpai 后端，发送学习相关消息，流式接收回复，并把互动保留在移动端时间线里。
+
+**README GIF 文件名**：`docs/assets/demo-ios-chat.gif`
+
+**假数据准备**：
+
+- 专门为录制创建的临时 SQLite 数据库。
+- 假学习者姓名，例如 `Alex`。
+- 假学习提示词：`I have 45 minutes. Help me plan a focused review block for calculus.`
+- 可选假附件：不含真实姓名或账号数据的空白练习纸或合成笔记。
+- 可以设置 `MOBILE_API_TOKEN`，但绝不能在屏幕上显示真实值。
+
+**录制步骤**：
+
+1. 使用临时数据库在本地启动后端。
+2. 在 Simulator 中打开 iOS App。
+3. 打开 **Settings**，将 **Server Base URL** 设置为本地后端。
+4. 如果启用了 token auth，输入 **Mobile API Token** 后先退出 Settings，再录制主流程。
+5. 发送假学习提示词。
+6. 等流式回复完成。
+7. 短暂切到 timeline 或 home view，展示消息仍然可见。
+
+**画面中应该出现**：
+
+- iOS chat view。
+- 一条假的用户学习请求。
+- 一条包含计划、时间块或下一步的助手回复。
+- 不出现 token、不出现 localhost 之外的真实 endpoint、不出现真实聊天历史。
+
+**安全注意**：
+
+- 如果输入过 token，请裁掉 Settings。
+- 不要露出真实 App 的推送预览。
+- 不要露出真实日历、位置、Discord 或账号数据。
+
+## Demo 2：记忆 Dashboard 演示
+
+**录制目标**：展示记忆在成为长期上下文前可以被审计和撤销。
+
+**README GIF 文件名**：`docs/assets/demo-memory-dashboard.gif`
+
+**假数据准备**：
+
+- 专门为录制创建的临时 SQLite 数据库。
+- 至少 seed 一段假对话和一条假候选记忆。
+- 候选记忆示例：`Alex prefers 25-minute focus blocks with 5-minute breaks.`
+- 结构化事实示例：`study_style = pomodoro`。
+
+**录制步骤**：
+
+1. 在本地启动后端和 Dashboard。
+2. 使用本地开发凭据登录，避免最终画面中出现可见密码。
+3. 打开候选记忆面板。
+4. 确认一条假候选。
+5. 打开长期记忆面板，展示已确认的假记忆。
+6. 归档这条假记忆。
+7. 恢复它，展示可逆性。
+8. 如果不泄漏私有数据，可以打开审计或详情面板。
+
+**画面中应该出现**：
+
+- Dashboard memory/candidate 面板。
+- 一条明显的假候选记忆。
+- approve、archive、restore 控件。
+- 假记忆的状态变化或审计行。
+
+**安全注意**：
+
+- 永远不要录制真实生产数据库。
+- 不要展示原始 SQL 工具或包含用户名的文件系统路径。
+- 隐藏浏览器自动补全、密码管理器和地址历史。
+
+## Demo 3：学习工作流演示
+
+**录制目标**：展示学习模式、计划和主动关怀如何配合一次学习 session。
+
+**README GIF 文件名**：`docs/assets/demo-study-workflow.gif`
+
+**假数据准备**：
+
+- 专门为录制创建的临时 SQLite 数据库。
+- 假学习目标：`Review derivatives and complete 10 practice problems.`
+- 假可用时间：`45 minutes before dinner`。
+- 假主动偏好：第一段学习后允许 check-in。
+
+**录制步骤**：
+
+1. 使用假数据在本地启动后端。
+2. 在 iOS 或 Discord 中开启学习模式。
+3. 发送假学习目标和可用时间。
+4. 展示助手创建短学习计划。
+5. 打开 Dashboard mode 或 proactive 面板。
+6. 展示假主动偏好和一条生成的 check-in。
+7. 回到聊天，展示下一步学习建议。
+
+**画面中应该出现**：
+
+- 学习模式已开启。
+- 有具体步骤的短学习计划。
+- Dashboard 状态反映 mode/proactive 设置。
+- 一条假主动 check-in 或 planned nudge。
+
+**安全注意**：
+
+- 只使用假目标和假日程数据。
+- 不要展示真实通知历史或个人日历。
+- 不要暴露 `MOBILE_API_TOKEN`、Dashboard 凭据、私有主机名或真实聊天记录。
+
+## 录制检查清单
+
+- 使用被忽略的本地目录下的临时数据库。
+- 可见设置界面中只使用 placeholder 模型和 Discord 凭据。
+- 如果必须展示设置界面，将密钥脱敏为 `[REDACTED]`。
+- 所有可见数据都保持合成。
+- 将 GIF 导出为上面列出的精确文件名。
+
+## English fallback
 
 These scripts are for public README GIFs. Use a temporary database and fake data only. Do not record real chat history, memory rows, tokens, cookies, private backend addresses, or personal locations.
 
-## Demo 1: iOS Chat Demo
+Demo 1 shows the iOS client connecting to a local backend, sending a fake study request, streaming a reply, and keeping the message in the mobile timeline.
 
-**Recording goal**: show that the iOS client can connect to a local Study Senpai backend, send a study-oriented message, stream a reply, and keep the interaction in the mobile timeline.
+Demo 2 shows the Dashboard memory workflow with fake candidate memory approval, archive, restore, and audit/status changes.
 
-**README GIF filename**: `docs/assets/demo-ios-chat.gif`
+Demo 3 shows learning mode, a short study plan, proactive preference, and a fake check-in working together for a study session.
 
-**Fake preparation data**:
-
-- Temporary SQLite database created just for the recording.
-- Fake learner name, for example `Alex`.
-- Fake study prompt: `I have 45 minutes. Help me plan a focused review block for calculus.`
-- Optional fake attachment: a short blank worksheet or synthetic note with no real names or account data.
-- `MOBILE_API_TOKEN` may be set, but never show the value on screen.
-
-**Recording steps**:
-
-1. Start the backend locally with the temporary database.
-2. Open the iOS app in Simulator.
-3. Open **Settings** and set **Server Base URL** to the local backend.
-4. If token auth is enabled, enter **Mobile API Token**, then leave Settings before recording the main flow.
-5. Send the fake study prompt.
-6. Wait for the streaming reply to finish.
-7. Switch briefly to the timeline or home view to show that the message remains visible.
-
-**What should appear on screen**:
-
-- iOS chat view.
-- One fake user study request.
-- One assistant reply that contains a plan, time boxes, or next step.
-- No token, no real endpoint beyond localhost, no real chat history.
-
-**Safety notes**:
-
-- Crop out Settings if a token was typed.
-- Do not show push notification previews from real apps.
-- Do not show real calendar, location, Discord, or account data.
-
-## Demo 2: Memory Dashboard Demo
-
-**Recording goal**: show that memory is auditable and reversible before it becomes durable context.
-
-**README GIF filename**: `docs/assets/demo-memory-dashboard.gif`
-
-**Fake preparation data**:
-
-- Temporary SQLite database created just for the recording.
-- Seed at least one fake conversation and one fake memory candidate.
-- Example candidate content: `Alex prefers 25-minute focus blocks with 5-minute breaks.`
-- Example structured fact: `study_style = pomodoro`.
-
-**Recording steps**:
-
-1. Start the backend and Dashboard locally.
-2. Log in with local development credentials, avoiding any visible password field in the final recording.
-3. Open the memory candidate panel.
-4. Approve one fake candidate.
-5. Open the long-term memory panel and show the approved fake memory.
-6. Archive the fake memory.
-7. Restore it to show reversibility.
-8. Open an audit or detail panel if it does not reveal private data.
-
-**What should appear on screen**:
-
-- Dashboard memory/candidate panels.
-- A clearly fake memory candidate.
-- Approve, archive, and restore controls.
-- Status changes or audit rows for the fake memory.
-
-**Safety notes**:
-
-- Never record a real production database.
-- Do not show raw SQL tools or filesystem paths containing user names.
-- Keep browser autocomplete, password managers, and address history hidden.
-
-## Demo 3: Study Workflow Demo
-
-**Recording goal**: show how learning mode, planning, and proactive care work together for a study session.
-
-**README GIF filename**: `docs/assets/demo-study-workflow.gif`
-
-**Fake preparation data**:
-
-- Temporary SQLite database created just for the recording.
-- Fake study goal: `Review derivatives and complete 10 practice problems.`
-- Fake availability: `45 minutes before dinner`.
-- Fake proactive preference: opt in for a check-in after the first study block.
-
-**Recording steps**:
-
-1. Start the backend locally with fake data.
-2. In iOS or Discord, enable learning mode.
-3. Send the fake study goal and availability.
-4. Show the assistant creating a short study plan.
-5. Open the Dashboard mode or proactive panel.
-6. Show the fake proactive preference and one generated check-in.
-7. Return to chat and show the next study step.
-
-**What should appear on screen**:
-
-- Learning mode enabled.
-- A short study plan with concrete steps.
-- Dashboard state reflecting mode/proactive settings.
-- One fake proactive check-in or planned nudge.
-
-**Safety notes**:
-
-- Use fake goals and fake schedule data only.
-- Do not show real notification history or personal calendars.
-- Do not expose `MOBILE_API_TOKEN`, Dashboard credentials, private hostnames, or real chat records.
-
-## Recording Checklist
-
-- Use a temporary database under an ignored local directory.
-- Use placeholder model and Discord credentials in any visible setup screen.
-- Redact secrets as `[REDACTED]` if a setup screen must be shown.
-- Keep all visible data synthetic.
-- Export the GIFs to the exact filenames listed above.
+Always use synthetic data, hide credentials and real endpoints, redact secrets as `[REDACTED]`, and export GIFs to the filenames documented above.

@@ -1,4 +1,6 @@
-# 沈知微运维手册
+# 沈知微运维手册 / Operations Runbook
+
+## 中文优先
 
 这份文档只管运维，不重复解释聊天逻辑、环境变量和日常使用。配置与启动请看根目录的 `USER_GUIDE.md`。
 
@@ -223,3 +225,25 @@ python3 scripts/dashboard_visual_regression.py
 ```
 
 如果这 4 类检查都过了，再放行到长期运行环境，会稳很多。
+
+---
+
+## English fallback
+
+This runbook covers operations only. For chat behavior, environment variables, and day-to-day usage, see `USER_GUIDE.md`.
+
+Daily checks: Dashboard health trends, error closure, background tasks, performance/cost, and runtime logs. Watch for rising open errors, stuck `background_tasks`, elevated P95/P99 latency, cost spikes, or long-term `degraded` health checks.
+
+Logs are controlled by `LOG_FILE_PATH`; pair them with host log rotation. SQLite state is controlled by `DATABASE_PATH`; stop write traffic before `VACUUM` or manual recovery. Use `wal_checkpoint(TRUNCATE)` during low traffic if WAL files remain large.
+
+For recovery, back up first, avoid overwriting a live database under write traffic, then run `scripts/verify_product.py` and `scripts/dashboard_contracts.py`.
+
+After Dashboard, API, style, or observability changes, run:
+
+```bash
+python3 -m compileall src scripts
+python3 scripts/verify_product.py
+python3 scripts/dashboard_contracts.py
+python3 scripts/dashboard_e2e.py
+python3 scripts/dashboard_visual_regression.py
+```
