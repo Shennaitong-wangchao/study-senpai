@@ -35,6 +35,7 @@ python scripts/dashboard_visual_regression.py
 
 | 文件 | 覆盖内容 |
 |------|----------|
+| `tests/test_background_tasks.py` | 后台任务入队、handler 执行、缺失 handler、超时处理 |
 | `tests/test_dashboard_shared_diary.py` | 共享日记 Dashboard API、筛选、移动端桥接 |
 | `tests/test_dashboard_security.py` | Dashboard 密码哈希、hash 校验、请求来源 IP |
 | `tests/test_memory_persona_rules.py` | 记忆提取门控、重复模式识别、沉浸文案修复 |
