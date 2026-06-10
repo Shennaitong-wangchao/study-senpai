@@ -43,6 +43,7 @@ python scripts/dashboard_visual_regression.py
 | `tests/test_product_metrics.py` | 附件上下文、搜索摘要、体验指标评分 |
 | `tests/test_release_gate.py` | 发布门禁、私有路径拦截、高置信凭据扫描 |
 | `tests/test_settings.py` | 配置加载、必填环境变量、自动生成 Dashboard 凭据、模型解析 |
+| `tests/test_streaming_delivery.py` | 长回复流式切块、Markdown 代码块、类人分段发送 |
 | `tests/test_utils.py` | JSON 提取、文本处理、时间工具 |
 
 ## 写新测试的规则

@@ -18,6 +18,7 @@
 - 增加 `scripts/release_gate.py`，在 CI 中检查被跟踪的本地私有文件和高置信凭据模式。
 - 增加 HealthCheck 浅/深巡检单测，覆盖模型注册、chat/fallback ping 和降级路径。
 - 增加后台任务管理器单测，覆盖入队默认值、成功执行、缺失 handler 和超时处理。
+- 增加流式切块和类人分段发送单测，覆盖 Markdown 代码块、长文本切分和 typing/send 行为。
 
 ## 0.1.0 - 计划中
 
@@ -43,6 +44,7 @@ All notable Study Senpai changes are documented here. Until release tags are int
 - Added `scripts/release_gate.py` to block tracked local-private files and high-confidence credential patterns in CI.
 - Added HealthCheck shallow/deep probe tests for model registry checks, chat/fallback pings, and degraded paths.
 - Added background task manager tests for enqueue defaults, successful execution, missing handlers, and timeouts.
+- Added streaming chunk and human delivery tests for Markdown fences, long text splitting, and typing/send behavior.
 
 ## 0.1.0 - Planned
 
