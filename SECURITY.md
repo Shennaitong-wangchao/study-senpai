@@ -44,6 +44,10 @@ curl -H "Authorization: Bearer $MOBILE_API_TOKEN" \
 - 通过 HTTPS 提供服务时，优先启用 TLS 终止和 `DASHBOARD_SESSION_HTTPS_ONLY=true`。
 - 如果绑定 `DASHBOARD_HOST=0.0.0.0`，同时设置 `DASHBOARD_PUBLIC_BIND_ACKNOWLEDGED=true`，并使用防火墙、VPN 或反向代理保护服务。
 
+### 质量和安全门禁
+
+发布前门禁、secret scan、静态分析口径、已知误报和阻断规则见 [docs/QUALITY_BASELINE.md](docs/QUALITY_BASELINE.md)。
+
 ### 漏洞报告
 
 请通过私有安全公告或维护者私下渠道报告。不要包含真实密钥、聊天日志、数据库行或可识别用户的数据；敏感值统一替换为 `[REDACTED]`。
@@ -64,5 +68,7 @@ Never commit `.env` files, API keys, tokens, cookies, session secrets, dashboard
 `/mobile/*` uses Bearer token authentication when `MOBILE_API_TOKEN` is set. Empty-token mode is for localhost/dev only and must not be exposed through a public reverse proxy.
 
 Keep Dashboard authentication enabled outside local experiments, set a strong password and session secret, prefer HTTPS, and protect any `0.0.0.0` bind with network controls.
+
+Release gates, secret scanning, static-analysis interpretation, known false positives, and blocking rules are tracked in [docs/QUALITY_BASELINE.md](docs/QUALITY_BASELINE.md).
 
 Report vulnerabilities privately and include impact, affected paths, dummy-data reproduction steps, and suggested fixes when available.

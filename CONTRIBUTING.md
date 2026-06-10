@@ -48,6 +48,7 @@ python3 scripts/dashboard_visual_regression.py
 ```
 
 完整测试矩阵见 `docs/TESTING.md`。
+质量和安全基线、当前已知静态分析噪声、发布阻断规则见 `docs/QUALITY_BASELINE.md`。
 
 ### Pull Request
 
@@ -77,4 +78,4 @@ python3 -m pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Before opening a PR, run the relevant checks and describe changed paths, verification, and any privacy or deployment impact.
+Before opening a PR, run the relevant checks and describe changed paths, verification, and any privacy or deployment impact. See `docs/QUALITY_BASELINE.md` for the current release baseline and known static-analysis noise.

@@ -126,6 +126,7 @@ docs/            架构、路线图、运维和演示文档
 
 开发者上手、常见改动路径和测试说明见 [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)。
 完整测试矩阵见 [docs/TESTING.md](docs/TESTING.md)。
+质量、安全和发布验收基线见 [docs/QUALITY_BASELINE.md](docs/QUALITY_BASELINE.md)。
 
 ## Dashboard 共享日记
 
@@ -145,6 +146,7 @@ Dashboard 提供独立的 **共享日记** 面板，对应 `/api/shared-diary`�
 - 不要提交 API Key、Discord Token、Cookie、聊天日志、生成媒体、SQLite 文件或导出的记忆数据。
 
 发布或部署前，请先阅读 [SECURITY.md](SECURITY.md)。
+当前质量门禁、已知静态分析噪声和发布阻断规则见 [docs/QUALITY_BASELINE.md](docs/QUALITY_BASELINE.md)。
 
 ## 路线图
 
