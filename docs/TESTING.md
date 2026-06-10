@@ -39,6 +39,7 @@ python scripts/dashboard_visual_regression.py
 | `tests/test_companion_day_engine.py` | 角色日常路线格式、状态卡、现实锚点、上下文拼接、关闭开关 |
 | `tests/test_dashboard_shared_diary.py` | 共享日记 Dashboard API、筛选、移动端桥接 |
 | `tests/test_dashboard_security.py` | Dashboard 密码哈希、hash 校验、请求来源 IP |
+| `tests/test_db_migrations.py` | 数据库迁移记录、核心表创建、消息幂等迁移和唯一索引 |
 | `tests/test_memory_persona_rules.py` | 记忆提取门控、重复模式识别、沉浸文案修复 |
 | `tests/test_presence_proactive.py` | 屏幕后状态、睡眠守卫、开放事项、主动消息偏好、发送 gate 和模型计划校验 |
 | `tests/test_product_attachments.py` | 附件文本提取、大小上限、image/audio 分析、上下文构建 |

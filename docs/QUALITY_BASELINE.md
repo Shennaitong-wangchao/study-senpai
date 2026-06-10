@@ -34,7 +34,7 @@ python scripts/quality_triage.py quality-report.json --json
 
 | 项目 | 当前结果 |
 |------|----------|
-| pytest | 88 passed |
+| pytest | 90 passed |
 | release gate | passed |
 | Mobile API contracts | passed |
 | Dashboard contracts | passed |
@@ -42,7 +42,7 @@ python scripts/quality_triage.py quality-report.json --json
 | prompt caching verification | passed |
 | secret scanner | 0 findings |
 | code quality analyzer critical | 0 |
-| code quality analyzer estimated coverage | 26% |
+| code quality analyzer estimated coverage | 27% |
 | quality triage | 0 blockers, 29 needs review, 42 known noise |
 | documentation score | 100 |
 | GitHub Actions | `Python contracts` passing |
@@ -104,7 +104,7 @@ python scripts/quality_triage.py quality-report.json --json
 
 This document defines the current quality, security, and release baseline for Study Senpai. It is not a production-readiness claim; it is the shared standard for deciding whether a change improves safety, testability, and auditability.
 
-As of June 11, 2026, the baseline is: 88 pytest tests passing, release gate passing, Mobile/Dashboard contracts passing, product and prompt-caching verification passing, secret scanner reporting 0 findings, code quality analyzer reporting 0 critical findings, estimated coverage at 26%, documentation score at 100, a repo-owned `scripts/quality_triage.py` helper reporting 0 blockers, and GitHub Actions `Python contracts` passing.
+As of June 11, 2026, the baseline is: 90 pytest tests passing, release gate passing, Mobile/Dashboard contracts passing, product and prompt-caching verification passing, secret scanner reporting 0 findings, code quality analyzer reporting 0 critical findings, estimated coverage at 27%, documentation score at 100, a repo-owned `scripts/quality_triage.py` helper reporting 0 blockers, and GitHub Actions `Python contracts` passing.
 
 Release blockers include release-gate findings, real credential scanner findings, failed tests/contracts/product verification, auth bypasses, and any new leak of secrets, private paths, private chat content, cookies, database state, or local files.
 
