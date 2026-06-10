@@ -24,6 +24,7 @@
 - 增加 RealityContextService 和 CompanionDayEngine 单测，覆盖现实锚点脱敏、手动日程、天气摘要、角色日常路线和状态卡。
 - 增加 PresenceStateService 和 ProactiveMessageService 单测，覆盖睡眠守卫、开放事项、主动消息偏好、发送 gate 和模型计划校验。
 - 增加质量基线文档，记录发布门禁、secret scan、静态分析口径、已知误报和后续治理路线。
+- 增加 `scripts/quality_triage.py`，用于分流质量分析器 security findings 的阻断项、需审查项和已知噪声。
 
 ## 0.1.0 - 计划中
 
@@ -55,6 +56,7 @@ All notable Study Senpai changes are documented here. Until release tags are int
 - Added RealityContextService and CompanionDayEngine tests for anchor redaction, manual events, weather summaries, day routes, and status cards.
 - Added PresenceStateService and ProactiveMessageService tests for sleep guards, open loops, proactive preferences, send gates, and model plan validation.
 - Added a quality baseline document covering release gates, secret scanning, static-analysis interpretation, known false positives, and follow-up quality work.
+- Added `scripts/quality_triage.py` to classify quality-analyzer security findings into blockers, review-needed items, and known noise.
 
 ## 0.1.0 - Planned
 

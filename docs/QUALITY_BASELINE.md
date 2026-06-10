@@ -25,6 +25,7 @@ python scripts/verify_prompt_caching.py
 python scripts/release_gate.py
 python <senior-security>/scripts/secret_scanner.py . --format json
 python <senior-fullstack>/scripts/code_quality_analyzer.py . --json
+python scripts/quality_triage.py quality-report.json --json
 ```
 
 `<senior-security>` 和 `<senior-fullstack>` 指本地 Codex skill 目录。不要把本机绝对路径写进公开 issue、PR 或文档。
@@ -33,7 +34,7 @@ python <senior-fullstack>/scripts/code_quality_analyzer.py . --json
 
 | 项目 | 当前结果 |
 |------|----------|
-| pytest | 83 passed |
+| pytest | 88 passed |
 | release gate | passed |
 | Mobile API contracts | passed |
 | Dashboard contracts | passed |
@@ -41,9 +42,12 @@ python <senior-fullstack>/scripts/code_quality_analyzer.py . --json
 | prompt caching verification | passed |
 | secret scanner | 0 findings |
 | code quality analyzer critical | 0 |
-| code quality analyzer estimated coverage | 25% |
+| code quality analyzer estimated coverage | 26% |
+| quality triage | 0 blockers, 29 needs review, 42 known noise |
 | documentation score | 100 |
 | GitHub Actions | `Python contracts` passing |
+
+`scripts/quality_triage.py` 用来读取 `code_quality_analyzer.py --json` 产物，并把 security findings 分成 `blocker`、`needs_review`、`known_noise`。它不会替代人工安全审查；它的作用是避免宽泛启发式误报掩盖真正阻断项。
 
 ## 发布阻断规则
 
@@ -72,6 +76,7 @@ python <senior-fullstack>/scripts/code_quality_analyzer.py . --json
 - 继续把高风险纯逻辑模块补到 pytest：Dashboard route helper、ProductStore 写路径、presence/proactive 分支、reality calendar 解析。
 - 将 `scripts/verify_product.py` 拆出 fake data、Dashboard client helper 和断言 helper，降低复杂度。
 - 为 Dashboard 用户内容渲染添加统一转义测试，减少 XSS 审计噪声。
+- 将 `scripts/quality_triage.py` 接入 CI artifact 或人工 release checklist。
 
 ### 中期
 
@@ -99,7 +104,7 @@ python <senior-fullstack>/scripts/code_quality_analyzer.py . --json
 
 This document defines the current quality, security, and release baseline for Study Senpai. It is not a production-readiness claim; it is the shared standard for deciding whether a change improves safety, testability, and auditability.
 
-As of June 11, 2026, the baseline is: 83 pytest tests passing, release gate passing, Mobile/Dashboard contracts passing, product and prompt-caching verification passing, secret scanner reporting 0 findings, code quality analyzer reporting 0 critical findings, estimated coverage at 25%, documentation score at 100, and GitHub Actions `Python contracts` passing.
+As of June 11, 2026, the baseline is: 88 pytest tests passing, release gate passing, Mobile/Dashboard contracts passing, product and prompt-caching verification passing, secret scanner reporting 0 findings, code quality analyzer reporting 0 critical findings, estimated coverage at 26%, documentation score at 100, a repo-owned `scripts/quality_triage.py` helper reporting 0 blockers, and GitHub Actions `Python contracts` passing.
 
 Release blockers include release-gate findings, real credential scanner findings, failed tests/contracts/product verification, auth bypasses, and any new leak of secrets, private paths, private chat content, cookies, database state, or local files.
 
