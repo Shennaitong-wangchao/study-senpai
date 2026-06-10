@@ -38,6 +38,7 @@ python scripts/dashboard_visual_regression.py
 | `tests/test_dashboard_shared_diary.py` | 共享日记 Dashboard API、筛选、移动端桥接 |
 | `tests/test_dashboard_security.py` | Dashboard 密码哈希、hash 校验、请求来源 IP |
 | `tests/test_memory_persona_rules.py` | 记忆提取门控、重复模式识别、沉浸文案修复 |
+| `tests/test_product_health.py` | HealthCheck 浅/深巡检、模型注册、降级路径 |
 | `tests/test_product_metrics.py` | 附件上下文、搜索摘要、体验指标评分 |
 | `tests/test_release_gate.py` | 发布门禁、私有路径拦截、高置信凭据扫描 |
 | `tests/test_settings.py` | 配置加载、必填环境变量、自动生成 Dashboard 凭据、模型解析 |

@@ -16,6 +16,7 @@
 - 增加 `pyproject.toml`、pytest 回归测试和开发者上手指南。
 - 扩展 pytest 覆盖到 utils、配置加载、Dashboard 安全、记忆门控、沉浸文案和体验指标，并增加测试指南。
 - 增加 `scripts/release_gate.py`，在 CI 中检查被跟踪的本地私有文件和高置信凭据模式。
+- 增加 HealthCheck 浅/深巡检单测，覆盖模型注册、chat/fallback ping 和降级路径。
 
 ## 0.1.0 - 计划中
 
@@ -39,6 +40,7 @@ All notable Study Senpai changes are documented here. Until release tags are int
 - Added `pyproject.toml`, pytest regression coverage, and a developer onboarding guide.
 - Expanded pytest coverage across utilities, settings, Dashboard security, memory gating, immersive voice repair, and experience metrics, with a dedicated testing guide.
 - Added `scripts/release_gate.py` to block tracked local-private files and high-confidence credential patterns in CI.
+- Added HealthCheck shallow/deep probe tests for model registry checks, chat/fallback pings, and degraded paths.
 
 ## 0.1.0 - Planned
 
