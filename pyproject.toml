@@ -1,0 +1,12 @@
+[project]
+name = "study-senpai"
+version = "0.1.0"
+description = "Local-first learning companion framework with memory, dashboard, mobile API, and iOS client."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["."]

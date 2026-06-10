@@ -44,6 +44,7 @@ ENDPOINT_TO_MODEL = {
     "/api/presence": PanelEnvelope,
     "/api/proactive": PanelEnvelope,
     "/api/reality-context": PanelEnvelope,
+    "/api/shared-diary": PanelEnvelope,
     "/api/relationships": PanelEnvelope,
     "/api/snapshots": PanelEnvelope,
     "/api/summaries": PanelEnvelope,

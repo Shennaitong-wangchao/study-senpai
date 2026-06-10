@@ -10,7 +10,7 @@ Study Senpai 是一个可自托管的 Python + SQLite 陪伴系统，包含 iOS 
 - 用于记忆审阅、可观测性和本地运维的 FastAPI Dashboard。
 - 供 `ios/Lover/` 下 SwiftUI iOS 客户端使用的 Mobile API。
 - 可选的 Discord Bot 运行时。
-- 记忆提取、审阅、归档/恢复、摘要和主动关怀流程。
+- 记忆提取、审阅、归档/恢复、摘要、共享日记和主动关怀流程。
 
 沈知微是项目内置的默认示例人格。它代表的是示例产品行为，不是固定的托管服务身份。
 
@@ -56,6 +56,7 @@ http://127.0.0.1:8099
 运行轻量检查：
 
 ```bash
+python3 -m pytest
 python3 scripts/mobile_contracts.py
 python3 scripts/dashboard_contracts.py
 python3 scripts/verify_product.py
@@ -122,6 +123,12 @@ scripts/         合同检查、冒烟检查和回归检查
 docs/            架构、路线图、运维和演示文档
 ```
 
+开发者上手、常见改动路径和测试说明见 [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)。
+
+## Dashboard 共享日记
+
+Dashboard 提供独立的 **共享日记** 面板，对应 `/api/shared-diary`。它会展示 day engine 沉淀出的日常片段、用户回应、语音输入和复盘内容，并支持按关键字、`entry_type`、`role_scope` 分页筛选。移动端可通过 `/mobile/dashboard/shared-diary` 读取同一份面板数据。
+
 ## 人格
 
 沈知微是默认示例人格。当前实现将该人格放在 `src/persona/` 下的 Python 模块，以及 `src/llm/prompts/` 下的提示词文件中。计划中的 YAML/JSON 人格注册表方向见 [docs/PERSONA_SYSTEM_PUBLIC.md](docs/PERSONA_SYSTEM_PUBLIC.md)。
@@ -167,7 +174,7 @@ Study Senpai is a self-hosted Python + SQLite companion system with an iOS clien
 - FastAPI Dashboard for memory review, observability, and local operations.
 - Mobile API used by the SwiftUI iOS client under `ios/Lover/`.
 - Optional Discord bot runtime.
-- Memory extraction, review, archive/restore, summaries, and proactive check-in flows.
+- Memory extraction, review, archive/restore, summaries, shared diary, and proactive check-in flows.
 
 沈知微 is included as the default example persona. Treat it as sample product behavior, not a fixed hosted service identity.
 
@@ -213,6 +220,7 @@ http://127.0.0.1:8099
 Run the lightweight checks:
 
 ```bash
+python3 -m pytest
 python3 scripts/mobile_contracts.py
 python3 scripts/dashboard_contracts.py
 python3 scripts/verify_product.py
@@ -279,6 +287,12 @@ ios/Lover/       SwiftUI iOS client
 scripts/         Contract, smoke, and regression checks
 docs/            Architecture, roadmap, operations, demos
 ```
+
+See [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for contributor setup, common change paths, and test guidance.
+
+## Dashboard Shared Diary
+
+The Dashboard includes a **Shared Diary** panel backed by `/api/shared-diary`. It surfaces day-engine diary entries, user responses, voice snippets, and review notes with keyword, `entry_type`, `role_scope`, and pagination filters. Mobile clients can read the same panel through `/mobile/dashboard/shared-diary`.
 
 ## Persona
 

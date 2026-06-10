@@ -135,6 +135,7 @@
       proactive: { page: 1, page_size: 20, q: "", status: "" },
       presence: { data: null },
       "companion-day": { data: null },
+      "shared-diary": { page: 1, page_size: 20, q: "", entry_type: "", role_scope: "" },
       "reality-context": { data: null },
       facts: { page: 1, page_size: 20, q: "", namespace: "" },
       relationships: { page: 1, page_size: 20, q: "", dimension: "" },
@@ -302,6 +303,9 @@
         break;
       case "companion-day":
         content = renderCompanionDay(panelState.data);
+        break;
+      case "shared-diary":
+        content = renderSharedDiary(panelState.data);
         break;
       case "reality-context":
         content = renderRealityContext(panelState.data);
@@ -1032,6 +1036,79 @@
             </tbody>
           </table>
         </div>
+      </section>
+    `;
+  }
+
+  function renderSharedDiary(data) {
+    const panel = state.panels["shared-diary"];
+    const items = (data && data.items) || [];
+    const summary = (data && data.summary) || {};
+    const typeCounts = summary.visible_type_counts || {};
+    const dates = summary.visible_dates || [];
+    const typeCountText = Object.entries(typeCounts)
+      .map(([key, value]) => `${key}:${value}`)
+      .join(" / ") || "-";
+    return `
+      <section class="panel-card">
+        <div class="panel-header">
+          <div>
+            <h2>共享日记</h2>
+            <div class="panel-subtitle">把“她的一天”沉淀出的复盘、回应和语音片段集中展示，方便确认哪些内容会影响日常陪伴上下文。</div>
+          </div>
+          <div class="inline-group">${renderBadge(`当前 ${escapeHtml(data?.meta?.total || 0)} 条`, "success")}</div>
+        </div>
+        ${renderSummaryCards([
+          { title: "当前 Scope", value: summary.active_scope_name || "-", note: "按会话隔离展示" },
+          { title: "可见日期", value: dates.length || 0, note: dates.slice(0, 3).join(" / ") || "暂无日期" },
+          { title: "条目类型", value: Object.keys(typeCounts).length || 0, note: typeCountText },
+        ])}
+        <form class="filter-row" data-panel-form="shared-diary">
+          <input name="q" value="${escapeHtml(panel.q)}" placeholder="搜标题 / 内容 / 标签 / 来源">
+          <select name="entry_type" aria-label="日记类型">
+            <option value="">全部类型</option>
+            <option value="day_event" ${panel.entry_type === "day_event" ? "selected" : ""}>day_event</option>
+            <option value="day_response" ${panel.entry_type === "day_response" ? "selected" : ""}>day_response</option>
+            <option value="voice_input" ${panel.entry_type === "voice_input" ? "selected" : ""}>voice_input</option>
+          </select>
+          <select name="role_scope" aria-label="角色范围">
+            <option value="">全部范围</option>
+            <option value="companion" ${panel.role_scope === "companion" ? "selected" : ""}>companion</option>
+            <option value="user" ${panel.role_scope === "user" ? "selected" : ""}>user</option>
+            <option value="shared" ${panel.role_scope === "shared" ? "selected" : ""}>shared</option>
+          </select>
+          <button class="primary" type="submit">应用</button>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>日期</th><th>类型</th><th>内容</th><th>范围 / 标签</th><th>元信息</th></tr></thead>
+            <tbody>
+              ${items
+                .map(
+                  (item) => `
+                    <tr>
+                      <td>
+                        <div class="nowrap">${escapeHtml(item.local_date || "-")}</div>
+                        <div class="text-soft">${escapeHtml(formatDateTime(item.created_at))}</div>
+                      </td>
+                      <td>
+                        <div>${escapeHtml(item.title || item.entry_type || "-")}</div>
+                        <div class="text-soft">${escapeHtml(item.source || "-")} · ${escapeHtml(formatNumber(item.importance || 0, 2))}</div>
+                      </td>
+                      <td>${renderCollapsibleText(item.content || "", 180)}</td>
+                      <td>
+                        <div>${escapeHtml(item.role_scope || "-")}</div>
+                        <div class="chip-row">${(item.tags || []).map((tag) => `<span class="chip">${escapeHtml(tag)}</span>`).join("")}</div>
+                      </td>
+                      <td>${renderCodeBlock({ route_uid: item.route_uid, event_uid: item.event_uid, metadata: item.metadata || {} })}</td>
+                    </tr>
+                  `,
+                )
+                .join("") || '<tr><td colspan="5" class="text-soft">暂无共享日记。</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+        ${buildPagination(data ? data.meta : null, "shared-diary")}
       </section>
     `;
   }

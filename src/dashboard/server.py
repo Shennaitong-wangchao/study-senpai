@@ -619,6 +619,28 @@ def _serialize_summary_row(row: Any) -> dict[str, Any]:
     }
 
 
+def _serialize_shared_diary_row(row: Any) -> dict[str, Any]:
+    return {
+        "id": int(row["id"]),
+        "diary_uid": row["diary_uid"],
+        "user_id": row["user_id"],
+        "conversation_id": row["conversation_id"],
+        "route_uid": row["route_uid"],
+        "event_uid": row["event_uid"],
+        "local_date": row["local_date"],
+        "entry_type": row["entry_type"],
+        "title": row["title"],
+        "content": row["content"],
+        "role_scope": row["role_scope"],
+        "source": row["source"],
+        "importance": float(row["importance"]),
+        "tags": json_loads(row["tags_json"], []),
+        "metadata": json_loads(row["metadata_json"], {}),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
 def _serialize_proactive_row(row: Any) -> dict[str, Any]:
     metadata = json_loads(row["metadata_json"], {})
     accepted = row["accepted"]
@@ -1194,7 +1216,17 @@ def build_dashboard_app(
                 id="memory",
                 title="记忆与上下文",
                 subtitle="长期记忆、候选、事实、关系和摘要",
-                panels=["search", "memories", "candidates", "snapshots", "facts", "relationships", "summaries", "attachments"],
+                panels=[
+                    "search",
+                    "memories",
+                    "candidates",
+                    "snapshots",
+                    "facts",
+                    "relationships",
+                    "summaries",
+                    "shared-diary",
+                    "attachments",
+                ],
             ),
             MobileDashboardGroup(
                 id="reality",
@@ -1487,6 +1519,7 @@ def build_dashboard_app(
                 {"tab": "search", "label": "全局搜索"},
                 {"tab": "memories", "label": "长期记忆"},
                 {"tab": "candidates", "label": "候选记忆"},
+                {"tab": "shared-diary", "label": "共享日记"},
                 {"tab": "performance", "label": "性能成本"},
                 {"tab": "errors", "label": "错误闭环"},
             ],
@@ -2511,6 +2544,67 @@ def build_dashboard_app(
             highlights={"diary": diary[:12]},
         )
 
+    @app.get("/api/shared-diary", response_model=PanelEnvelope)
+    async def shared_diary(
+        q: str = "",
+        entry_type: Optional[str] = None,
+        role_scope: Optional[str] = None,
+        page: int = Query(1, ge=1),
+        page_size: int = Query(20, ge=1, le=60),
+    ) -> PanelEnvelope:
+        page, page_size = _normalize_page(page, page_size)
+        normalized_q = _normalize_q(q)
+        scope = current_scope_snapshot()
+        clauses = ["1 = 1"]
+        params: list[Any] = []
+        if scope:
+            clauses.append("user_id = ?")
+            params.append(scope["user_id"])
+            clauses.append("conversation_id = ?")
+            params.append(scope["conversation_id"])
+        if entry_type:
+            clauses.append("entry_type = ?")
+            params.append(entry_type)
+        if role_scope:
+            clauses.append("role_scope = ?")
+            params.append(role_scope)
+        search_clause, search_params = _build_text_search(
+            normalized_q,
+            ["diary_uid", "local_date", "entry_type", "title", "content", "role_scope", "source", "tags_json", "metadata_json"],
+        )
+        if search_clause:
+            clauses.append(search_clause)
+            params.extend(search_params)
+        rows, total = _run_paged_select(
+            db=product_store.db,
+            columns="*",
+            from_clause=f"FROM shared_diary_entries WHERE {' AND '.join(clauses)}",
+            params=params,
+            order_by="created_at DESC, id DESC",
+            page=page,
+            page_size=page_size,
+        )
+        items = [_serialize_shared_diary_row(row) for row in rows]
+        unique_dates = sorted({item["local_date"] for item in items if item.get("local_date")}, reverse=True)
+        type_counts: dict[str, int] = {}
+        for item in items:
+            item_type = str(item.get("entry_type") or "unknown")
+            type_counts[item_type] = type_counts.get(item_type, 0) + 1
+        return _build_panel_response(
+            active_scope=scope,
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            q=normalized_q,
+            filters={"entry_type": entry_type or "", "role_scope": role_scope or ""},
+            summary={
+                "visible_dates": unique_dates[:8],
+                "visible_type_counts": type_counts,
+                "active_scope_name": None if scope is None else scope["display_name"],
+            },
+        )
+
     @app.patch("/api/companion-day", response_model=ActionResponse)
     async def update_companion_day(request: Request, body: CompanionDayUpdateRequest) -> ActionResponse:
         scope_snapshot, scope = current_conversation_scope()
@@ -3297,6 +3391,8 @@ def build_dashboard_app(
         artifact_type: Optional[str] = None,
         namespace: Optional[str] = None,
         dimension: Optional[str] = None,
+        entry_type: Optional[str] = None,
+        role_scope: Optional[str] = None,
     ):
         key = panel_key.strip().lower().replace("_", "-")
         if key == "overview":
@@ -3335,6 +3431,14 @@ def build_dashboard_app(
             return await presence()
         if key == "companion-day":
             return await companion_day()
+        if key == "shared-diary":
+            return await shared_diary(
+                q=q,
+                entry_type=entry_type,
+                role_scope=role_scope,
+                page=page,
+                page_size=page_size,
+            )
         if key == "reality-context":
             return await reality_context()
         if key == "facts":

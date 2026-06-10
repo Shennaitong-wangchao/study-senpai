@@ -45,6 +45,7 @@
 
 ## Phase 5：学习工作流
 
+- 已落地：共享日记 Dashboard/Mobile API，用于展示 day engine 产生的日常片段、用户回应、语音输入和复盘记录。
 - 增加目标计划、学习 session、间隔复习和进度摘要。
 - 增加附件到学习笔记的流程。
 - 增加本地 analytics，用于关注 focus、cadence 和 streak，不默认云同步。

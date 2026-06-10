@@ -39,6 +39,7 @@ MOBILE_PANEL_ENDPOINTS = {
     "/mobile/dashboard/proactive": PanelEnvelope,
     "/mobile/dashboard/presence": PanelEnvelope,
     "/mobile/dashboard/reality-context": PanelEnvelope,
+    "/mobile/dashboard/shared-diary": PanelEnvelope,
     "/mobile/dashboard/facts": PanelEnvelope,
     "/mobile/dashboard/relationships": PanelEnvelope,
     "/mobile/dashboard/summaries": PanelEnvelope,
@@ -71,8 +72,9 @@ def main() -> None:
                 f"mobile no-token remote gate expected 403, got {remote_without_token.status_code}"
             )
 
+        mobile_auth_value = "mobile-contract-bearer-value"
         token_app = build_dashboard_app(
-            settings=replace(settings, mobile_api_token="mobile-contract-token"),
+            settings=replace(settings, mobile_api_token=mobile_auth_value),
             product_store=product_store,
             memory_store=memory_store,
             llm_client=FakeLLMClient(),
@@ -83,7 +85,7 @@ def main() -> None:
             raise AssertionError(f"mobile token gate expected 401, got {unauthenticated.status_code}")
         authenticated = token_client.get(
             "/mobile/bootstrap",
-            headers={"Authorization": "Bearer mobile-contract-token"},
+            headers={"Authorization": f"Bearer {mobile_auth_value}"},
         )
         if authenticated.status_code != 200:
             raise AssertionError(f"mobile token auth failed: {authenticated.status_code} {authenticated.text}")

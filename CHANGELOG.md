@@ -12,6 +12,8 @@
 - 增加 GitHub hygiene 文件和轻量 CI 工作流。
 - 保留沈知微作为默认示例人格。
 - 将主要 Markdown 文档调整为中文优先、英文备用。
+- 增加共享日记 Dashboard/Mobile API 面板，展示 day engine 沉淀的复盘、回应和语音片段。
+- 增加 `pyproject.toml`、pytest 回归测试和开发者上手指南。
 
 ## 0.1.0 - 计划中
 
@@ -31,6 +33,8 @@ All notable Study Senpai changes are documented here. Until release tags are int
 - Added GitHub hygiene files and lightweight CI workflow.
 - Kept 沈知微 as the default example persona.
 - Made primary Markdown docs Chinese-first with English fallback.
+- Added a shared diary Dashboard/Mobile API panel for day-engine review notes, responses, and voice snippets.
+- Added `pyproject.toml`, pytest regression coverage, and a developer onboarding guide.
 
 ## 0.1.0 - Planned
 
