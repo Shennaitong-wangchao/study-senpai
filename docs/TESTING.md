@@ -42,7 +42,9 @@ python scripts/dashboard_visual_regression.py
 | `tests/test_product_attachments.py` | 附件文本提取、大小上限、image/audio 分析、上下文构建 |
 | `tests/test_product_health.py` | HealthCheck 浅/深巡检、模型注册、降级路径 |
 | `tests/test_product_metrics.py` | 附件上下文、搜索摘要、体验指标评分 |
+| `tests/test_product_planner.py` | 回复规划、搜索/绘图意图、学习模式、边界优先级、节奏判断 |
 | `tests/test_product_search.py` | DuckDuckGo HTML 解析、跳转 URL 还原、搜索失败降级 |
+| `tests/test_product_store.py` | ProductStore 设置、模式状态、后台任务生命周期、日志脱敏 |
 | `tests/test_release_gate.py` | 发布门禁、私有路径拦截、高置信凭据扫描 |
 | `tests/test_settings.py` | 配置加载、必填环境变量、自动生成 Dashboard 凭据、模型解析 |
 | `tests/test_streaming_delivery.py` | 长回复流式切块、Markdown 代码块、类人分段发送 |
