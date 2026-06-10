@@ -39,6 +39,8 @@ python -m src.main
 
 ## 验证入口
 
+完整测试矩阵见 [TESTING.md](TESTING.md)。
+
 ```bash
 python -m pytest
 python scripts/mobile_contracts.py

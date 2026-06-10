@@ -46,6 +46,8 @@ python3 scripts/dashboard_e2e.py
 python3 scripts/dashboard_visual_regression.py
 ```
 
+完整测试矩阵见 `docs/TESTING.md`。
+
 ### Pull Request
 
 请说明：

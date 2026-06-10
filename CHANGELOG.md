@@ -14,6 +14,7 @@
 - 将主要 Markdown 文档调整为中文优先、英文备用。
 - 增加共享日记 Dashboard/Mobile API 面板，展示 day engine 沉淀的复盘、回应和语音片段。
 - 增加 `pyproject.toml`、pytest 回归测试和开发者上手指南。
+- 扩展 pytest 覆盖到 utils、配置加载、Dashboard 安全、记忆门控、沉浸文案和体验指标，并增加测试指南。
 
 ## 0.1.0 - 计划中
 
@@ -35,6 +36,7 @@ All notable Study Senpai changes are documented here. Until release tags are int
 - Made primary Markdown docs Chinese-first with English fallback.
 - Added a shared diary Dashboard/Mobile API panel for day-engine review notes, responses, and voice snippets.
 - Added `pyproject.toml`, pytest regression coverage, and a developer onboarding guide.
+- Expanded pytest coverage across utilities, settings, Dashboard security, memory gating, immersive voice repair, and experience metrics, with a dedicated testing guide.
 
 ## 0.1.0 - Planned
 

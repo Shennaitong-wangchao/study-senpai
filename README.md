@@ -124,6 +124,7 @@ docs/            架构、路线图、运维和演示文档
 ```
 
 开发者上手、常见改动路径和测试说明见 [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)。
+完整测试矩阵见 [docs/TESTING.md](docs/TESTING.md)。
 
 ## Dashboard 共享日记
 
@@ -289,6 +290,7 @@ docs/            Architecture, roadmap, operations, demos
 ```
 
 See [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for contributor setup, common change paths, and test guidance.
+See [docs/TESTING.md](docs/TESTING.md) for the full test matrix.
 
 ## Dashboard Shared Diary
 
