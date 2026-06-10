@@ -1491,6 +1491,8 @@ def verify_proactive_preferences_cadence_and_context(
         enabled=True,
         source="verify",
     )
+    local_today = datetime.now(ZoneInfo(active_settings.bot_timezone)).replace(hour=8, minute=0, second=0, microsecond=0)
+    today_sent_base = local_today.astimezone(timezone.utc)
     for index in range(4):
         uid = product_store.create_proactive_message(
             user_id=scope.user_id,
@@ -1499,9 +1501,10 @@ def verify_proactive_preferences_cadence_and_context(
             trigger_type="verify_daily_limit",
             opening_text=f"verify daily limit {index}",
         )
+        sent_at = (today_sent_base + timedelta(minutes=index)).isoformat()
         product_store.db.execute(
             "UPDATE proactive_messages SET status = 'responded', sent_at = ?, updated_at = ? WHERE proactive_uid = ?",
-            ((datetime.now(timezone.utc) - timedelta(minutes=200 + index)).isoformat(), iso_utc_now(), uid),
+            (sent_at, iso_utc_now(), uid),
         )
     daily_limited = asyncio.run(service.scan_and_send(client))  # type: ignore[arg-type]
     if daily_limited.get("sent") != 0 or daily_limited.get("skipped_daily_limit", 0) < 1:
