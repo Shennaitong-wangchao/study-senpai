@@ -29,6 +29,9 @@ jobs:
       - name: Run unit tests
         run: python -m pytest
 
+      - name: Run release gate
+        run: python scripts/release_gate.py
+
       - name: Run mobile contracts
         run: python scripts/mobile_contracts.py
 

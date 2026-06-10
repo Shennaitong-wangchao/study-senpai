@@ -12,6 +12,7 @@ Study Senpai 的测试体系分三层：
 
 ```bash
 python -m pytest
+python scripts/release_gate.py
 python scripts/mobile_contracts.py
 python scripts/dashboard_contracts.py
 python scripts/verify_product.py
@@ -38,6 +39,7 @@ python scripts/dashboard_visual_regression.py
 | `tests/test_dashboard_security.py` | Dashboard 密码哈希、hash 校验、请求来源 IP |
 | `tests/test_memory_persona_rules.py` | 记忆提取门控、重复模式识别、沉浸文案修复 |
 | `tests/test_product_metrics.py` | 附件上下文、搜索摘要、体验指标评分 |
+| `tests/test_release_gate.py` | 发布门禁、私有路径拦截、高置信凭据扫描 |
 | `tests/test_settings.py` | 配置加载、必填环境变量、自动生成 Dashboard 凭据、模型解析 |
 | `tests/test_utils.py` | JSON 提取、文本处理、时间工具 |
 
@@ -56,6 +58,7 @@ GitHub Actions 当前执行：
 
 ```text
 python -m pytest
+python scripts/release_gate.py
 python scripts/mobile_contracts.py
 python scripts/dashboard_contracts.py
 python scripts/verify_product.py
@@ -76,6 +79,7 @@ Run before opening a PR:
 
 ```bash
 python -m pytest
+python scripts/release_gate.py
 python scripts/mobile_contracts.py
 python scripts/dashboard_contracts.py
 python scripts/verify_product.py

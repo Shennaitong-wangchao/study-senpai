@@ -43,6 +43,7 @@ python -m src.main
 
 ```bash
 python -m pytest
+python scripts/release_gate.py
 python scripts/mobile_contracts.py
 python scripts/dashboard_contracts.py
 python scripts/verify_product.py

@@ -57,6 +57,7 @@ http://127.0.0.1:8099
 
 ```bash
 python3 -m pytest
+python3 scripts/release_gate.py
 python3 scripts/mobile_contracts.py
 python3 scripts/dashboard_contracts.py
 python3 scripts/verify_product.py
@@ -222,6 +223,7 @@ Run the lightweight checks:
 
 ```bash
 python3 -m pytest
+python3 scripts/release_gate.py
 python3 scripts/mobile_contracts.py
 python3 scripts/dashboard_contracts.py
 python3 scripts/verify_product.py

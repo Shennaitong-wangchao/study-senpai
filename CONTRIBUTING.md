@@ -34,6 +34,7 @@ DASHBOARD_ENABLED=true
 
 ```bash
 python3 -m pytest
+python3 scripts/release_gate.py
 python3 scripts/verify_product.py
 python3 scripts/dashboard_contracts.py
 python3 scripts/mobile_contracts.py
