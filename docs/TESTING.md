@@ -40,6 +40,7 @@ python scripts/dashboard_visual_regression.py
 | `tests/test_dashboard_shared_diary.py` | 共享日记 Dashboard API、筛选、移动端桥接 |
 | `tests/test_dashboard_security.py` | Dashboard 密码哈希、hash 校验、请求来源 IP |
 | `tests/test_memory_persona_rules.py` | 记忆提取门控、重复模式识别、沉浸文案修复 |
+| `tests/test_presence_proactive.py` | 屏幕后状态、睡眠守卫、开放事项、主动消息偏好、发送 gate 和模型计划校验 |
 | `tests/test_product_attachments.py` | 附件文本提取、大小上限、image/audio 分析、上下文构建 |
 | `tests/test_product_health.py` | HealthCheck 浅/深巡检、模型注册、降级路径 |
 | `tests/test_product_metrics.py` | 附件上下文、搜索摘要、体验指标评分 |

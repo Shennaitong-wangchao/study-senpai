@@ -22,6 +22,7 @@
 - 增加附件和搜索服务单测，覆盖文件 payload、大小上限、image/audio 分析、DuckDuckGo HTML 解析和失败降级。
 - 增加回复规划器和 ProductStore 单测，覆盖意图/场景判断、模式状态、后台任务生命周期和日志脱敏。
 - 增加 RealityContextService 和 CompanionDayEngine 单测，覆盖现实锚点脱敏、手动日程、天气摘要、角色日常路线和状态卡。
+- 增加 PresenceStateService 和 ProactiveMessageService 单测，覆盖睡眠守卫、开放事项、主动消息偏好、发送 gate 和模型计划校验。
 
 ## 0.1.0 - 计划中
 
@@ -51,6 +52,7 @@ All notable Study Senpai changes are documented here. Until release tags are int
 - Added attachment and search service tests for file payloads, byte limits, image/audio analysis, DuckDuckGo HTML parsing, and degraded search paths.
 - Added ReplyPlanner and ProductStore tests for intent/scene planning, mode state, background task lifecycle, and log redaction.
 - Added RealityContextService and CompanionDayEngine tests for anchor redaction, manual events, weather summaries, day routes, and status cards.
+- Added PresenceStateService and ProactiveMessageService tests for sleep guards, open loops, proactive preferences, send gates, and model plan validation.
 
 ## 0.1.0 - Planned
 
