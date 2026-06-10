@@ -36,6 +36,7 @@ python scripts/dashboard_visual_regression.py
 | 文件 | 覆盖内容 |
 |------|----------|
 | `tests/test_background_tasks.py` | 后台任务入队、handler 执行、缺失 handler、超时处理 |
+| `tests/test_companion_day_engine.py` | 角色日常路线格式、状态卡、现实锚点、上下文拼接、关闭开关 |
 | `tests/test_dashboard_shared_diary.py` | 共享日记 Dashboard API、筛选、移动端桥接 |
 | `tests/test_dashboard_security.py` | Dashboard 密码哈希、hash 校验、请求来源 IP |
 | `tests/test_memory_persona_rules.py` | 记忆提取门控、重复模式识别、沉浸文案修复 |
@@ -45,6 +46,7 @@ python scripts/dashboard_visual_regression.py
 | `tests/test_product_planner.py` | 回复规划、搜索/绘图意图、学习模式、边界优先级、节奏判断 |
 | `tests/test_product_search.py` | DuckDuckGo HTML 解析、跳转 URL 还原、搜索失败降级 |
 | `tests/test_product_store.py` | ProductStore 设置、模式状态、后台任务生命周期、日志脱敏 |
+| `tests/test_reality_context.py` | 现实锚点位置配置、日历来源脱敏、手动日程、天气摘要和上下文块 |
 | `tests/test_release_gate.py` | 发布门禁、私有路径拦截、高置信凭据扫描 |
 | `tests/test_settings.py` | 配置加载、必填环境变量、自动生成 Dashboard 凭据、模型解析 |
 | `tests/test_streaming_delivery.py` | 长回复流式切块、Markdown 代码块、类人分段发送 |
