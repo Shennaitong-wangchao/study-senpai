@@ -16,6 +16,10 @@ from src.utils.time_utils import iso_utc_now
 
 logger = logging.getLogger(__name__)
 
+# 内存中存储活跃学习会话：user_id → session_uid
+# 注意：Bot 重启后会丢失，生产环境可持久化到 Redis/DB
+_active_sessions: dict[str, str] = {}
+
 
 HELP_TEXT = """📚 **Study Senpai 可用命令**
 
@@ -25,6 +29,9 @@ HELP_TEXT = """📚 **Study Senpai 可用命令**
 `/review` — 查看今日到期的复习卡片
 `/addgoal <标题> | <学科>` — 添加学习目标，如 `/addgoal 高考数学 | 数学`
 `/addcard <问题> | <答案>` — 添加复习卡片，如 `/addcard 牛顿第一定律 | 惯性定律`
+`/plan <目标标题或UID>` — 查看指定目标的每日学习计划建议
+`/start [目标标题或UID]` — 开始计时学习会话（记录到数据库）
+`/done <分钟数>` — 结束学习会话并记录时长，如 `/done 45`
 
 其他任何消息都会直接发给学姐~"""
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -687,6 +687,31 @@ def build_dashboard_app(
         openapi_url="/api/openapi.json",
     )
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="dashboard-static")
+
+    # WebSocket 连接管理器（实时推送：学习提醒、主动消息通知）
+    class _WsManager:
+        def __init__(self) -> None:
+            self._connections: list[WebSocket] = []
+
+        async def connect(self, ws: WebSocket) -> None:
+            await ws.accept()
+            self._connections.append(ws)
+
+        def disconnect(self, ws: WebSocket) -> None:
+            self._connections = [c for c in self._connections if c is not ws]
+
+        async def broadcast(self, data: dict[str, Any]) -> None:
+            dead: list[WebSocket] = []
+            for ws in list(self._connections):
+                try:
+                    await ws.send_json(data)
+                except Exception:
+                    dead.append(ws)
+            for ws in dead:
+                self.disconnect(ws)
+
+    ws_manager = _WsManager()
+
     presence_service = PresenceStateService(
         settings=settings,
         product_store=product_store,
@@ -3692,7 +3717,44 @@ def build_dashboard_app(
         content: str = ""
         display_name: str = "用户"
 
-    @app.post("/api/chat/stream")
+    @app.websocket("/ws/notifications")
+    async def ws_notifications(websocket: WebSocket) -> None:
+        """WebSocket 实时通知端点。
+
+        连接后接收以下事件类型：
+        - type=ping: 心跳
+        - type=study_reminder: 学习复习提醒
+        - type=proactive: 主动消息通知
+        - type=candidate: 新候选记忆通知
+        """
+        if settings.dashboard_auth_enabled:
+            session_val = websocket.session if hasattr(websocket, "session") else {}
+            if not session_val.get("dashboard_authenticated"):
+                await websocket.close(code=1008)
+                return
+        await ws_manager.connect(websocket)
+        try:
+            await websocket.send_json({"type": "connected", "message": "Study Senpai 通知频道已连接"})
+            while True:
+                data = await websocket.receive_text()
+                if data == "ping":
+                    await websocket.send_json({"type": "pong"})
+        except WebSocketDisconnect:
+            ws_manager.disconnect(websocket)
+
+    @app.post("/api/notifications/broadcast", response_model=ActionResponse)
+    async def broadcast_notification(request: Request, body: dict) -> ActionResponse:
+        """向所有连接的 Dashboard 广播一条通知消息（仅供内部/调试使用）。"""
+        event_type = body.get("type", "info")
+        message = str(body.get("message", ""))[:500]
+        await ws_manager.broadcast({"type": event_type, "message": message})
+        return ActionResponse(ok=True, message=f"广播给 {len(ws_manager._connections)} 个连接")
+
+    @app.post(
+        "/api/chat/stream",
+        summary="Web 聊天流式对话",
+        description="Dashboard 内置 Web Chat 端点，通过 SSE 流式返回 companion 回复，需要 Dashboard 会话认证。",
+    )
     async def web_chat_stream(request: Request, body: WebChatRequest) -> StreamingResponse:
         """Dashboard 内置 Web Chat 端点，复用 companion service，需要 Dashboard 会话认证。"""
         scope_snapshot = current_scope_snapshot()
@@ -3947,7 +4009,11 @@ def build_dashboard_app(
             raise HTTPException(status_code=404, detail="review item not found")
         return {"ok": True, "item": updated}
 
-    @app.get("/api/study/stats")
+    @app.get(
+        "/api/study/stats",
+        summary="学习统计概览",
+        description="返回当前用户的学习统计数据：连续打卡天数、今日到期卡片、专注时长、已掌握条目数等。",
+    )
     async def get_study_stats() -> dict:
         """获取用户的学习统计：连续天数、到期卡片数、今日专注时长等。"""
         scope = current_scope_snapshot()
@@ -3971,5 +4037,83 @@ def build_dashboard_app(
         if text:
             summary["summary_text"] = study_service.get_review_summary_text(scope["user_id"])
         return summary
+
+    @app.get("/api/study/goals/{goal_uid}/plan")
+    async def get_study_goal_plan(
+        goal_uid: str,
+        days: Optional[int] = Query(None, ge=0, description="距离目标日期的天数（可选，优先于目标中的 target_date）"),
+    ) -> dict:
+        """获取指定学习目标的每日/每周学习计划建议（纯本地计算，不依赖 LLM）。
+
+        返回：
+        - plan: 包含 urgency, daily_minutes, cards_per_day, focus_areas, weekly_checkpoints
+        - refreshed_at: 计算时间戳
+        """
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        goal = study_service.get_goal(goal_uid)
+        if goal is None:
+            raise HTTPException(status_code=404, detail="goal not found")
+        plan = study_service.generate_study_plan(
+            user_id=scope["user_id"],
+            goal_uid=goal_uid,
+            days_until_target=days,
+        )
+        return {"plan": plan, "refreshed_at": iso_utc_now()}
+
+    @app.post("/api/study/goals/{goal_uid}/start-session")
+    async def start_study_session_for_goal(
+        request: Request,
+        goal_uid: str,
+    ) -> dict:
+        """为指定目标开始一次学习会话，返回 session_uid 及开始时间。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        goal = study_service.get_goal(goal_uid)
+        if goal is None:
+            raise HTTPException(status_code=404, detail="goal not found")
+        session_uid = study_service.start_session(
+            user_id=scope["user_id"],
+            goal_uid=goal_uid,
+        )
+        session = study_service.get_session(session_uid)
+        return {
+            "ok": True,
+            "session_uid": session_uid,
+            "goal_uid": goal_uid,
+            "started_at": session["started_at"] if session else iso_utc_now(),
+        }
+
+    class EndSessionRequest(BaseModel):
+        focus_minutes: int = Field(..., ge=0)
+        items_reviewed: int = Field(default=0, ge=0)
+        notes: Optional[str] = None
+
+    @app.post("/api/study/sessions/{session_uid}/end")
+    async def end_study_session(
+        request: Request,
+        session_uid: str,
+        body: EndSessionRequest,
+    ) -> dict:
+        """结束一次学习会话并记录专注时长和复习卡片数。
+
+        body：
+        - focus_minutes: 专注时长（分钟，必填）
+        - items_reviewed: 复习卡片数（默认 0）
+        - notes: 备注（可选）
+        """
+        success = study_service.end_session(
+            session_uid=session_uid,
+            focus_minutes=body.focus_minutes,
+            items_reviewed=body.items_reviewed,
+            notes=body.notes,
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="session not found or already ended")
+        session = study_service.get_session(session_uid)
+        return {"ok": True, "session": session}
+
 
     return app
