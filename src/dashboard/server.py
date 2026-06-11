@@ -3814,4 +3814,20 @@ def build_dashboard_app(
         stats = study_service.get_study_stats(scope["user_id"])
         return stats
 
+    @app.get("/api/study/summary")
+    async def get_study_summary(text: bool = Query(False)) -> dict:
+        """获取当日学习摘要。
+
+        - 返回 JSON 摘要（reviewed_today, goals_updated, streak_days, due_tomorrow,
+          session_minutes, achievements）。
+        - 若携带 ?text=true，则额外返回人类可读的 summary_text 字段。
+        """
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        summary = study_service.generate_daily_summary(scope["user_id"])
+        if text:
+            summary["summary_text"] = study_service.get_review_summary_text(scope["user_id"])
+        return summary
+
     return app

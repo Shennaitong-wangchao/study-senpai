@@ -358,6 +358,131 @@ class StudyService:
     # 统计
     # -----------------------------------------------------------------------
 
+    def generate_daily_summary(self, user_id: str) -> dict[str, Any]:
+        """生成当日学习摘要（纯本地计算，不依赖 LLM）。
+
+        Returns:
+            dict 包含：
+            - reviewed_today: 今日复习卡片数（来自 study_sessions.items_reviewed 之和）
+            - goals_updated: 今日更新目标数（updated_at 在今天的目标）
+            - streak_days: 连续学习天数
+            - due_tomorrow: 明日到期卡片数
+            - session_minutes: 今日学习时长（分钟）
+            - achievements: 成就列表（如 "连续7天"、"完成10张复习" 等）
+        """
+        now = iso_utc_now()
+        today_start = _today_iso()
+        # 明天开始时间 = 今天零点 + 1天，明天结束 = 后天零点
+        today_dt = datetime.fromisoformat(today_start)
+        if today_dt.tzinfo is None:
+            today_dt = today_dt.replace(tzinfo=timezone.utc)
+        tomorrow_start = (today_dt + timedelta(days=1)).isoformat()
+        day_after_start = (today_dt + timedelta(days=2)).isoformat()
+
+        # 今日复习卡片数 & 学习时长（从 study_sessions 汇总）
+        sessions_row = self.db.fetchone(
+            """
+            SELECT COALESCE(SUM(items_reviewed), 0) AS total_reviewed,
+                   COALESCE(SUM(focus_minutes), 0) AS total_minutes
+            FROM study_sessions
+            WHERE user_id = ? AND started_at >= ? AND ended_at IS NOT NULL
+            """,
+            (user_id, today_start),
+        )
+        reviewed_today = int(sessions_row["total_reviewed"]) if sessions_row else 0
+        session_minutes = int(sessions_row["total_minutes"]) if sessions_row else 0
+
+        # 今日更新目标数（updated_at 在今天范围内，排除刚创建的）
+        goals_updated_row = self.db.fetchone(
+            """
+            SELECT COUNT(*) AS cnt FROM study_goals
+            WHERE user_id = ? AND updated_at >= ? AND updated_at < ?
+            """,
+            (user_id, today_start, tomorrow_start),
+        )
+        goals_updated = int(goals_updated_row["cnt"]) if goals_updated_row else 0
+
+        # 连续打卡天数
+        streak_days = self._compute_streak(user_id)
+
+        # 明日到期卡片数（next_review_at 在 [明天零点, 后天零点) 区间）
+        due_tomorrow_row = self.db.fetchone(
+            """
+            SELECT COUNT(*) AS cnt FROM review_items
+            WHERE user_id = ? AND status = 'active'
+              AND next_review_at >= ? AND next_review_at < ?
+            """,
+            (user_id, tomorrow_start, day_after_start),
+        )
+        due_tomorrow = int(due_tomorrow_row["cnt"]) if due_tomorrow_row else 0
+
+        # 成就计算
+        achievements: list[str] = []
+        # 成就：连续学习天数里程碑（3/7/14/30/100 天）
+        for milestone in (3, 7, 14, 30, 100):
+            if streak_days == milestone:
+                achievements.append(f"连续{milestone}天")
+        # 成就：今日复习卡片里程碑（5/10/20/50 张）
+        for milestone in (5, 10, 20, 50):
+            if reviewed_today >= milestone:
+                achievements.append(f"完成{milestone}张复习")
+                break  # 只取最高档
+        # 成就：专注学习时长里程碑（30/60/120 分钟）
+        for milestone in (30, 60, 120):
+            if session_minutes >= milestone:
+                achievements.append(f"专注{milestone}分钟")
+                break
+        # 成就：今日更新目标
+        if goals_updated > 0:
+            achievements.append(f"更新{goals_updated}个目标")
+
+        return {
+            "user_id": user_id,
+            "reviewed_today": reviewed_today,
+            "goals_updated": goals_updated,
+            "streak_days": streak_days,
+            "due_tomorrow": due_tomorrow,
+            "session_minutes": session_minutes,
+            "achievements": achievements,
+            "computed_at": now,
+        }
+
+    def get_review_summary_text(self, user_id: str) -> str:
+        """生成人类可读的学习摘要文本（供 AI 发消息或 Dashboard 展示）。
+
+        Returns:
+            可直接展示的文字摘要字符串。
+        """
+        s = self.generate_daily_summary(user_id)
+        lines: list[str] = []
+
+        # 标题行
+        lines.append("📚 今日学习摘要")
+
+        # 核心数字
+        if s["session_minutes"] > 0:
+            lines.append(f"• 学习时长：{s['session_minutes']} 分钟")
+        if s["reviewed_today"] > 0:
+            lines.append(f"• 复习卡片：{s['reviewed_today']} 张")
+        if s["goals_updated"] > 0:
+            lines.append(f"• 更新目标：{s['goals_updated']} 个")
+
+        # 连续天数
+        if s["streak_days"] > 0:
+            lines.append(f"• 连续打卡：{s['streak_days']} 天 🔥")
+        else:
+            lines.append("• 今天还没有完成任何学习会话")
+
+        # 明日预告
+        if s["due_tomorrow"] > 0:
+            lines.append(f"• 明日待复习：{s['due_tomorrow']} 张")
+
+        # 成就
+        if s["achievements"]:
+            lines.append("🏆 成就：" + "、".join(s["achievements"]))
+
+        return "\n".join(lines)
+
     def get_study_stats(self, user_id: str) -> dict[str, Any]:
         """返回用户的学习统计概览：连续打卡天数、卡片总数、今日到期等。"""
         now = iso_utc_now()

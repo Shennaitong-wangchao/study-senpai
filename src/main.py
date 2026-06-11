@@ -38,6 +38,7 @@ from src.product.search import SearchService
 from src.product.store import ProductStore
 from src.product.tasks import BackgroundTaskManager
 from src.services.memory_service import MemoryService
+from src.product.study import StudyService
 from src.services.companion_service import CompanionService
 from src.services.reply_service import ReplyService
 
@@ -233,6 +234,54 @@ async def run() -> None:
     task_manager.register_handler("health_check", handle_health_check)
     task_manager.register_handler("proactive_scan", handle_proactive_scan)
 
+    study_service = StudyService(db=database)
+
+    async def handle_daily_study_summary(_: dict) -> dict:
+        """每日 21:00 学习摘要任务：为最近活跃用户生成摘要并通过 Discord DM 发送。"""
+        # 查找近 7 天内有学习会话的活跃用户（最多处理 20 人）
+        active_user_rows = database.fetchall(
+            """
+            SELECT DISTINCT user_id FROM study_sessions
+            WHERE started_at >= datetime('now', '-7 days')
+            ORDER BY started_at DESC
+            LIMIT 20
+            """,
+        )
+        if not active_user_rows:
+            return {"sent": 0, "skipped": 0, "reason": "no_active_users"}
+
+        sent_count = 0
+        skipped_count = 0
+        for row in active_user_rows:
+            user_id = str(row["user_id"])
+            summary = study_service.generate_daily_summary(user_id)
+            # 当天没有任何学习活动，跳过
+            if summary["reviewed_today"] == 0 and summary["session_minutes"] == 0:
+                skipped_count += 1
+                continue
+
+            summary_text = study_service.get_review_summary_text(user_id)
+
+            # 通过 Discord DM 发送（仅在 Discord bot 可用时）
+            if client is not None:
+                try:
+                    discord_user = await client.fetch_user(int(user_id))
+                    dm_channel = await discord_user.create_dm()
+                    await dm_channel.send(summary_text)
+                    sent_count += 1
+                except Exception as exc:  # noqa: BLE001
+                    # Discord 不可用、用户 ID 非整数等，graceful 跳过
+                    logger.warning("每日摘要 DM 发送失败 user_id=%s: %s", user_id, exc)
+                    skipped_count += 1
+            else:
+                # Discord bot 未启用，仅记录日志
+                logger.info("每日摘要（Discord 未启用）user_id=%s:\n%s", user_id, summary_text)
+                skipped_count += 1
+
+        return {"sent": sent_count, "skipped": skipped_count}
+
+    task_manager.register_handler("daily_study_summary", handle_daily_study_summary)
+
     async def handle_observability_cleanup(_: dict) -> dict:
         return product_store.purge_old_observability(
             retention_days=settings.observability_retention_days,
@@ -272,6 +321,13 @@ async def run() -> None:
                 dedupe_key="observability-cleanup",
                 interval_seconds=24 * 60 * 60,
                 priority=0.2,
+            )
+            task_manager.schedule_periodic(
+                task_type="daily_study_summary",
+                payload_factory=lambda: {},
+                dedupe_key="daily-study-summary",
+                interval_seconds=86400,  # 每 24 小时触发一次
+                priority=0.3,
             )
         else:
             logger.warning(

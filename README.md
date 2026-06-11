@@ -2,17 +2,18 @@
 
 # Study Senpai — 本地优先 AI 学习陪伴框架
 
-**长期记忆 · 学习支持 · 主动关怀 · 完全自托管**
+**长期记忆 · 学习目标 · 间隔复习 · 主动关怀 · 完全自托管**
 
-[![CI](https://github.com/username/study-senpai/actions/workflows/ci.yml/badge.svg)](https://github.com/username/study-senpai/actions)
+[![CI](https://github.com/Shennaitong-wangchao/study-senpai/actions/workflows/ci.yml/badge.svg)](https://github.com/Shennaitong-wangchao/study-senpai/actions)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![SQLite](https://img.shields.io/badge/storage-SQLite-003B57.svg)](https://www.sqlite.org/)
 [![FastAPI](https://img.shields.io/badge/dashboard-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
 [![Discord](https://img.shields.io/badge/runtime-Discord-5865F2.svg)](https://discord.com/)
 [![iOS](https://img.shields.io/badge/client-iOS%20SwiftUI-000000.svg)](ios/Lover/)
+[![Tests](https://img.shields.io/badge/tests-195%20passing-brightgreen.svg)](#开发与测试)
 
-[English](#english-fallback) · [快速开始](#快速开始) · [功能特性](#功能特性) · [架构](#架构) · [文档](#文档) · [贡献](#贡献)
+[English](#english-fallback) · [快速开始](#快速开始) · [功能特性](#功能特性) · [人格系统](#人格系统) · [架构](#架构) · [文档](#文档) · [贡献](#贡献)
 
 </div>
 
@@ -210,26 +211,53 @@ language: 默认使用中文，支持切换英文
 PERSONA_FILE=personas/my_persona.yaml
 ```
 
-内置人格：
-- `personas/shen_zhiwei.yaml` — 沈知微（默认）：温柔克制的高三学姐
-- `personas/study_buddy.yaml` — 学术型学习助手
+内置人格（6 个，社区可贡献更多）：
+
+| 文件 | 人格 | 风格 |
+|------|------|------|
+| `personas/shen_zhiwei.yaml` | 沈知微（默认） | 温柔克制、高三学姐 |
+| `personas/study_buddy.yaml` | 林晓研 | 学术严谨、研究生助手 |
+| `personas/english_coach.yaml` | Alex | 耐心风趣、英语口语教练 |
+| `personas/code_mentor.yaml` | 林程远 | 务实引导、全栈代码导师 |
+| `personas/history_teacher.yaml` | 史云飞教授 | 幽默博学、历史故事讲述者 |
+| `personas/wellness_buddy.yaml` | 何悠悠 | 温暖细腻、健康生活伙伴 |
 
 ---
 
-## Dashboard 截图
+## Dashboard
 
-> Dashboard 运行在 `http://127.0.0.1:8099`，提供以下面板：
+> 运行在 `http://127.0.0.1:8099`，包含以下功能面板：
 
-- **Overview** — 会话、记忆、任务统计概览
-- **Memories** — 长期记忆列表，支持归档/恢复/搜索
-- **Candidates** — 候选记忆审核队列（批量批准/拒绝）
-- **Shared Diary** — Day Engine 日记面板
-- **Turns** — 会话轮次可观测性
-- **Study Goals** — 学习目标管理
-- **Review Queue** — 间隔复习卡片管理
-- **Performance** — LLM 性能指标
-- **Tasks** — 后台任务队列
-- **Security** — 登录审计、操作日志
+| 面板 | 功能 |
+|------|------|
+| **总览** | 会话、记忆、任务统计 |
+| **💬 聊天** | 浏览器内直接对话 AI |
+| **📚 学习** | 目标管理、SM-2 复习队列、统计卡片 |
+| **长期记忆** | 记忆列表、归档/恢复、导出 |
+| **候选记忆** | 批量审核 AI 提取的记忆 |
+| **共享日记** | Day Engine 日记面板 |
+| **她的一天** | AI 当日状态时间线 |
+| **Turn Trace** | 每次对话的完整可观测性 |
+| **主动消息** | 主动关怀发送历史 |
+| **性能成本** | LLM 延迟、token 消耗 |
+| **安全控制** | 登录审计、操作日志 |
+
+---
+
+## Discord 命令
+
+在 Discord DM 中可使用文本命令：
+
+```
+/help          — 查看所有命令
+/stats         — 学习统计（streak、今日复习等）
+/goals         — 查看学习目标列表
+/review        — 今日到期复习卡片
+/addgoal <标题> | <学科>   — 添加学习目标
+/addcard <问题> | <答案>   — 添加复习卡片
+```
+
+其他消息直接发给 AI 陪伴。
 
 ---
 
