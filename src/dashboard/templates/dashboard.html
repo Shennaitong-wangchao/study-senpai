@@ -264,6 +264,11 @@
             </div>
           </div>
 
+          <div style="margin-top:16px">
+            <h3 style="margin:0 0 8px;font-size:15px">🏆 成就</h3>
+            <div id="study-achievements" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+          </div>
+
           <div id="study-add-goal-form" style="display:none;background:var(--surface-2,#f3f4f6);padding:16px;border-radius:8px;margin-top:16px">
             <h4 style="margin:0 0 12px">新建学习目标</h4>
             <div style="display:flex;flex-direction:column;gap:10px">
@@ -310,10 +315,11 @@
     async function loadStudyData() {
       setStudyStatus('加载中…');
       try {
-        const [statsRes, goalsRes, reviewRes] = await Promise.all([
+        const [statsRes, goalsRes, reviewRes, achRes] = await Promise.all([
           fetch('/api/study/stats'),
           fetch('/api/study/goals'),
           fetch('/api/study/review?limit=10'),
+          fetch('/api/study/achievements'),
         ]);
 
         if (statsRes.ok) {
@@ -385,6 +391,23 @@
             }
           }
         }
+
+        if (achRes && achRes.ok) {
+          const achData = await achRes.json();
+          const achEl = document.getElementById('study-achievements');
+          if (achEl && achData.achievements) {
+            achEl.innerHTML = achData.achievements.map(a =>
+              '<div title="' + a.desc + '" style="padding:8px 12px;border-radius:8px;font-size:13px;display:flex;align-items:center;gap:6px;'
+              + (a.unlocked
+                ? 'background:var(--surface-2,#f3f4f6);color:var(--text,#111)'
+                : 'background:var(--border,#e5e7eb);color:var(--text-muted,#9ca3af);opacity:0.6') + '">'
+              + '<span style="font-size:16px">' + a.icon + '</span>'
+              + '<span>' + a.name + '</span>'
+              + '</div>'
+            ).join('');
+          }
+        }
+
         setStudyStatus('');
       } catch (e) {
         setStudyStatus('加载失败: ' + e.message);
