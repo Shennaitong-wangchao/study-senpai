@@ -11,7 +11,7 @@
 [![FastAPI](https://img.shields.io/badge/dashboard-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
 [![Discord](https://img.shields.io/badge/runtime-Discord-5865F2.svg)](https://discord.com/)
 [![iOS](https://img.shields.io/badge/client-iOS%20SwiftUI-000000.svg)](ios/Lover/)
-[![Tests](https://img.shields.io/badge/tests-359%20passing-brightgreen.svg)](#开发与测试)
+[![Tests](https://img.shields.io/badge/tests-390%20passing-brightgreen.svg)](#开发与测试)
 
 [English](#english-fallback) · [快速开始](#快速开始) · [功能特性](#功能特性) · [人格系统](#人格系统) · [架构](#架构) · [文档](#文档) · [贡献](#贡献)
 
