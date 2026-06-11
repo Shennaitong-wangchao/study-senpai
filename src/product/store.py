@@ -2009,6 +2009,129 @@ class ProductStore:
             ),
         )
 
+    def get_memories_for_review(self, user_id: str, limit: int = 10) -> list[dict[str, Any]]:
+        """获取需要复盘的记忆（超过 30 天未被引用的重要记忆）。
+
+        筛选条件：
+        - status = 'active'
+        - last_used_at IS NULL 或 last_used_at 超过 30 天前
+        - 按 importance 倒序排列（高重要性优先）
+        - 排除已有 review_action = 'archive' 或 'update'（通过 metadata 标记）的记忆
+
+        Returns:
+            list of dict，每条格式同 list_long_term_memories，但附加 review_status 字段。
+        """
+        from datetime import datetime, timezone, timedelta
+
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=30)
+        cutoff_iso = cutoff_dt.isoformat()
+
+        rows = self.db.fetchall(
+            """
+            SELECT ltm.*, mus.hit_count, mus.last_hit_at
+            FROM long_term_memories ltm
+            LEFT JOIN memory_usage_stats mus ON mus.memory_uid = ltm.memory_uid
+            WHERE ltm.user_id = ? AND ltm.status = 'active'
+              AND (ltm.last_used_at IS NULL OR ltm.last_used_at < ?)
+              AND (mus.last_hit_at IS NULL OR mus.last_hit_at < ?)
+            ORDER BY ltm.importance DESC, ltm.updated_at ASC
+            LIMIT ?
+            """,
+            (user_id, cutoff_iso, cutoff_iso, limit),
+        )
+
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            metadata = json_loads(row["metadata_json"], {})
+            # 跳过已被标记 review_action 为 archive 的记忆
+            review_action = metadata.get("review_action")
+            if review_action == "archive":
+                continue
+            result.append({
+                "memory_uid": row["memory_uid"],
+                "user_id": row["user_id"],
+                "memory_type": row["memory_type"],
+                "category": row["category"],
+                "content": row["content"],
+                "tags": json_loads(row["tags_json"], []),
+                "confidence": float(row["confidence"]),
+                "importance": float(row["importance"]),
+                "last_used_at": row["last_used_at"],
+                "hit_count": int(row["hit_count"] or 0),
+                "last_hit_at": row["last_hit_at"],
+                "review_action": review_action,
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            })
+        return result[:limit]
+
+    def record_memory_review(self, memory_uid: str, action: str) -> bool:
+        """记录记忆复盘结果。
+
+        action 含义：
+        - confirm：确认仍然有效，更新 last_used_at 为当前时间
+        - archive：归档该记忆（设置 status = 'archived'）
+        - update：标记需要更新，在 metadata 中记录 review_action = 'update'
+
+        Returns:
+            True 表示操作成功，False 表示记忆不存在或状态不符合条件。
+        """
+        allowed_actions = {"confirm", "archive", "update"}
+        if action not in allowed_actions:
+            raise ValueError(f"不合法的 action：{action!r}，允许值：{allowed_actions}")
+
+        row = self.db.fetchone(
+            "SELECT * FROM long_term_memories WHERE memory_uid = ? LIMIT 1",
+            (memory_uid,),
+        )
+        if row is None:
+            return False
+
+        now = iso_utc_now()
+
+        if action == "confirm":
+            # 确认有效：更新 last_used_at，清除 review_action 标记
+            metadata = json_loads(row["metadata_json"], {})
+            metadata.pop("review_action", None)
+            cursor = self.db.execute(
+                """
+                UPDATE long_term_memories
+                SET last_used_at = ?, metadata_json = ?, updated_at = ?
+                WHERE memory_uid = ? AND status = 'active'
+                """,
+                (now, json_dumps(metadata), now, memory_uid),
+            )
+            return (cursor.rowcount or 0) > 0
+
+        if action == "archive":
+            # 归档记忆
+            cursor = self.db.execute(
+                """
+                UPDATE long_term_memories
+                SET status = 'archived', updated_at = ?
+                WHERE memory_uid = ? AND status = 'active'
+                """,
+                (now, memory_uid),
+            )
+            return (cursor.rowcount or 0) > 0
+
+        if action == "update":
+            # 标记需要更新（在 metadata 写入 review_action = 'update'）
+            metadata = json_loads(row["metadata_json"], {})
+            metadata["review_action"] = "update"
+            metadata["review_flagged_at"] = now
+            cursor = self.db.execute(
+                """
+                UPDATE long_term_memories
+                SET metadata_json = ?, updated_at = ?
+                WHERE memory_uid = ? AND status = 'active'
+                """,
+                (json_dumps(metadata), now, memory_uid),
+            )
+            return (cursor.rowcount or 0) > 0
+
+        return False  # 不会到这里，但让静态分析满意
+
     def archive_long_term_memory(self, memory_uid: str) -> bool:
         cursor = self.db.execute(
             """

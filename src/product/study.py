@@ -785,6 +785,258 @@ class StudyService:
             "created_at": row["created_at"],
         }
 
+    def generate_weekly_report(self, user_id: str, period_days: int = 7) -> dict[str, Any]:
+        """生成学习周报（过去 N 天，默认 7 天；30 天时可用于月报）。
+
+        Returns:
+            {
+                "period": {"start": "2026-06-05", "end": "2026-06-11"},
+                "summary": {
+                    "total_sessions": 5,
+                    "total_focus_minutes": 225,
+                    "total_cards_reviewed": 47,
+                    "goals_progressed": 2,
+                    "new_cards_added": 15,
+                },
+                "streak": {"current": 7, "longest_this_week": 7},
+                "by_subject": [
+                    {"subject": "数学", "cards_reviewed": 20, "focus_minutes": 90},
+                    ...
+                ],
+                "highlights": ["连续7天学习", "本周新增15张卡片"],
+                "next_week_due": 35,
+                "trend": "improving",  # improving / stable / declining
+            }
+        """
+        today = datetime.now(timezone.utc).date()
+        start_date = today - timedelta(days=period_days - 1)
+        end_date = today
+
+        start_iso = datetime(
+            start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc
+        ).isoformat()
+        # 结束时间取明天零点（即 today+1 天的零点），方便 < 比较
+        end_exclusive_iso = datetime(
+            (end_date + timedelta(days=1)).year,
+            (end_date + timedelta(days=1)).month,
+            (end_date + timedelta(days=1)).day,
+            tzinfo=timezone.utc,
+        ).isoformat()
+        # 下周结束（7 天后）
+        next_period_end_iso = datetime(
+            (end_date + timedelta(days=8)).year,
+            (end_date + timedelta(days=8)).month,
+            (end_date + timedelta(days=8)).day,
+            tzinfo=timezone.utc,
+        ).isoformat()
+
+        # ----- 本期会话汇总 -----
+        period_sessions_row = self.db.fetchone(
+            """
+            SELECT COUNT(*) AS total_sessions,
+                   COALESCE(SUM(focus_minutes), 0) AS total_focus_minutes,
+                   COALESCE(SUM(items_reviewed), 0) AS total_cards_reviewed
+            FROM study_sessions
+            WHERE user_id = ? AND started_at >= ? AND started_at < ?
+              AND ended_at IS NOT NULL
+            """,
+            (user_id, start_iso, end_exclusive_iso),
+        )
+        total_sessions = int(period_sessions_row["total_sessions"]) if period_sessions_row else 0
+        total_focus_minutes = int(period_sessions_row["total_focus_minutes"]) if period_sessions_row else 0
+        total_cards_reviewed = int(period_sessions_row["total_cards_reviewed"]) if period_sessions_row else 0
+
+        # ----- 本期更新过进度的目标数 -----
+        goals_progressed_row = self.db.fetchone(
+            """
+            SELECT COUNT(*) AS cnt FROM study_goals
+            WHERE user_id = ? AND updated_at >= ? AND updated_at < ?
+            """,
+            (user_id, start_iso, end_exclusive_iso),
+        )
+        goals_progressed = int(goals_progressed_row["cnt"]) if goals_progressed_row else 0
+
+        # ----- 本期新增卡片数 -----
+        new_cards_row = self.db.fetchone(
+            """
+            SELECT COUNT(*) AS cnt FROM review_items
+            WHERE user_id = ? AND created_at >= ? AND created_at < ?
+            """,
+            (user_id, start_iso, end_exclusive_iso),
+        )
+        new_cards_added = int(new_cards_row["cnt"]) if new_cards_row else 0
+
+        # ----- 连续打卡天数（当前 streak）-----
+        current_streak = self._compute_streak(user_id)
+
+        # ----- 本期内最长连续打卡天数 -----
+        study_dates_rows = self.db.fetchall(
+            """
+            SELECT DISTINCT DATE(started_at) AS study_date
+            FROM study_sessions
+            WHERE user_id = ? AND started_at >= ? AND started_at < ?
+              AND ended_at IS NOT NULL
+            ORDER BY study_date ASC
+            """,
+            (user_id, start_iso, end_exclusive_iso),
+        )
+        study_dates = []
+        for row in study_dates_rows:
+            try:
+                study_dates.append(datetime.strptime(row["study_date"], "%Y-%m-%d").date())
+            except (ValueError, TypeError):
+                pass
+
+        longest_streak_period = 0
+        if study_dates:
+            cur_run = 1
+            best_run = 1
+            for i in range(1, len(study_dates)):
+                if study_dates[i] == study_dates[i - 1] + timedelta(days=1):
+                    cur_run += 1
+                    best_run = max(best_run, cur_run)
+                else:
+                    cur_run = 1
+            longest_streak_period = best_run
+
+        # ----- 按科目汇总：cards_reviewed（study_sessions 中的 items_reviewed 无法按科目拆分）
+        # 用 review_items 的 last_reviewed_at 在本期内的记录按 subject 聚合
+        subject_rows = self.db.fetchall(
+            """
+            SELECT COALESCE(subject, '未分类') AS subject,
+                   COUNT(*) AS cards_reviewed
+            FROM review_items
+            WHERE user_id = ? AND last_reviewed_at >= ? AND last_reviewed_at < ?
+            GROUP BY subject
+            ORDER BY cards_reviewed DESC
+            """,
+            (user_id, start_iso, end_exclusive_iso),
+        )
+
+        # 同时从 study_sessions join goal/subject 获取各科目的 focus_minutes（按 goal_uid 分组）
+        # 先取本期 sessions 的 goal_uid → focus_minutes 映射
+        session_goal_rows = self.db.fetchall(
+            """
+            SELECT goal_uid, COALESCE(SUM(focus_minutes), 0) AS focus_minutes
+            FROM study_sessions
+            WHERE user_id = ? AND started_at >= ? AND started_at < ?
+              AND ended_at IS NOT NULL AND goal_uid IS NOT NULL
+            GROUP BY goal_uid
+            """,
+            (user_id, start_iso, end_exclusive_iso),
+        )
+        # goal_uid → subject 映射
+        goal_subject_map: dict[str, str] = {}
+        for sg_row in session_goal_rows:
+            g_uid = sg_row["goal_uid"]
+            if g_uid and g_uid not in goal_subject_map:
+                goal_row = self.db.fetchone(
+                    "SELECT subject FROM study_goals WHERE goal_uid = ? LIMIT 1",
+                    (g_uid,),
+                )
+                if goal_row:
+                    goal_subject_map[g_uid] = goal_row["subject"] or "未分类"
+
+        # subject → focus_minutes 汇总
+        subject_focus: dict[str, int] = {}
+        for sg_row in session_goal_rows:
+            g_uid = sg_row["goal_uid"]
+            subj = goal_subject_map.get(g_uid, "未分类") if g_uid else "未分类"
+            subject_focus[subj] = subject_focus.get(subj, 0) + int(sg_row["focus_minutes"])
+
+        # 合并 subject_rows 和 subject_focus
+        by_subject: list[dict] = []
+        subject_cards: dict[str, int] = {row["subject"]: int(row["cards_reviewed"]) for row in subject_rows}
+        all_subjects = set(subject_cards) | set(subject_focus)
+        for subj in sorted(all_subjects, key=lambda s: subject_cards.get(s, 0), reverse=True):
+            by_subject.append({
+                "subject": subj,
+                "cards_reviewed": subject_cards.get(subj, 0),
+                "focus_minutes": subject_focus.get(subj, 0),
+            })
+
+        # ----- 下周到期卡片数 -----
+        next_week_due_row = self.db.fetchone(
+            """
+            SELECT COUNT(*) AS cnt FROM review_items
+            WHERE user_id = ? AND status = 'active'
+              AND next_review_at >= ? AND next_review_at < ?
+            """,
+            (user_id, end_exclusive_iso, next_period_end_iso),
+        )
+        next_week_due = int(next_week_due_row["cnt"]) if next_week_due_row else 0
+
+        # ----- trend：与上一个同等时段比较 -----
+        prev_start_iso = datetime(
+            (start_date - timedelta(days=period_days)).year,
+            (start_date - timedelta(days=period_days)).month,
+            (start_date - timedelta(days=period_days)).day,
+            tzinfo=timezone.utc,
+        ).isoformat()
+        prev_sessions_row = self.db.fetchone(
+            """
+            SELECT COALESCE(SUM(focus_minutes), 0) AS total_focus,
+                   COALESCE(SUM(items_reviewed), 0) AS total_reviewed
+            FROM study_sessions
+            WHERE user_id = ? AND started_at >= ? AND started_at < ?
+              AND ended_at IS NOT NULL
+            """,
+            (user_id, prev_start_iso, start_iso),
+        )
+        prev_focus = int(prev_sessions_row["total_focus"]) if prev_sessions_row else 0
+        prev_reviewed = int(prev_sessions_row["total_reviewed"]) if prev_sessions_row else 0
+
+        # 综合评分（时长 + 复习数量），与上期比较
+        cur_score = total_focus_minutes + total_cards_reviewed
+        prev_score = prev_focus + prev_reviewed
+
+        if prev_score == 0:
+            trend = "improving" if cur_score > 0 else "stable"
+        elif cur_score >= prev_score * 1.05:
+            trend = "improving"
+        elif cur_score <= prev_score * 0.95:
+            trend = "declining"
+        else:
+            trend = "stable"
+
+        # ----- highlights -----
+        highlights: list[str] = []
+        if current_streak >= period_days:
+            label = "7" if period_days == 7 else str(period_days)
+            highlights.append(f"连续{label}天学习")
+        elif current_streak >= 3:
+            highlights.append(f"连续{current_streak}天学习")
+        if new_cards_added > 0:
+            label = "本周" if period_days == 7 else "本月"
+            highlights.append(f"{label}新增{new_cards_added}张卡片")
+        if total_focus_minutes >= 60:
+            highlights.append(f"累计专注{total_focus_minutes}分钟")
+        if total_cards_reviewed >= 20:
+            highlights.append(f"共复习{total_cards_reviewed}张卡片")
+
+        return {
+            "period": {
+                "start": start_date.strftime("%Y-%m-%d"),
+                "end": end_date.strftime("%Y-%m-%d"),
+                "days": period_days,
+            },
+            "summary": {
+                "total_sessions": total_sessions,
+                "total_focus_minutes": total_focus_minutes,
+                "total_cards_reviewed": total_cards_reviewed,
+                "goals_progressed": goals_progressed,
+                "new_cards_added": new_cards_added,
+            },
+            "streak": {
+                "current": current_streak,
+                "longest_this_week": longest_streak_period,
+            },
+            "by_subject": by_subject,
+            "highlights": highlights,
+            "next_week_due": next_week_due,
+            "trend": trend,
+        }
+
     # -----------------------------------------------------------------------
     # Anki TSV 导入 / 导出
     # -----------------------------------------------------------------------
