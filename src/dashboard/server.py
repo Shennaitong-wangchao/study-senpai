@@ -3765,6 +3765,19 @@ def build_dashboard_app(
         text = study_service.get_review_summary_text(scope["user_id"])
         return {"summary": summary, "text": text, "refreshed_at": iso_utc_now()}
 
+    @app.get("/api/study/calendar.ics")
+    async def study_calendar_ics(days: int = Query(14, ge=1, le=90)) -> Response:
+        """下载学习计划 ICS 文件，可导入 Apple Calendar / Google Calendar。"""
+        scope = current_scope_snapshot()
+        if scope is None:
+            raise HTTPException(status_code=422, detail="no active scope")
+        ics_content = study_service.export_study_plan_ics(scope["user_id"], days_ahead=days)
+        return Response(
+            content=ics_content,
+            media_type="text/calendar",
+            headers={"Content-Disposition": "attachment; filename=study-senpai-plan.ics"},
+        )
+
     @app.get("/api/study/achievements")
     async def study_achievements() -> dict:
         """返回用户的成就列表（含是否已解锁）。"""
@@ -4064,6 +4077,95 @@ def build_dashboard_app(
         )
         return {"ok": True, "item": item}
 
+    # ------------------------------------------------------------------
+    # 批量卡片管理端点
+    # ------------------------------------------------------------------
+
+    class BatchAddItemsRequest(BaseModel):
+        items: List[dict] = Field(default_factory=list)
+        goal_uid: Optional[str] = None
+
+    class ArchiveBySubjectRequest(BaseModel):
+        subject: str
+
+    @app.post(
+        "/api/study/review/items/batch",
+        summary="批量添加复习卡片",
+        description="批量添加间隔复习卡片，在单个事务中完成。跳过 front/back 为空或超过 2000 字符的记录。",
+    )
+    async def batch_add_review_items(request: Request, body: BatchAddItemsRequest) -> dict:
+        """批量添加复习卡片。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        result = study_service.batch_add_review_items(
+            user_id=scope["user_id"],
+            items=body.items,
+            goal_uid=body.goal_uid,
+        )
+        return {"ok": True, **result}
+
+    @app.post(
+        "/api/study/review/items/{item_uid}/archive",
+        summary="归档单张复习卡片",
+        description="将指定卡片归档（停止复习），status 设为 archived。",
+    )
+    async def archive_review_item(request: Request, item_uid: str) -> dict:
+        """归档单张复习卡片。"""
+        success = study_service.archive_review_item(item_uid)
+        if not success:
+            raise HTTPException(status_code=404, detail="review item not found")
+        return {"ok": True, "item_uid": item_uid}
+
+    @app.post(
+        "/api/study/review/items/{item_uid}/restore",
+        summary="恢复已归档的复习卡片",
+        description="将已归档的卡片恢复为 active 状态，next_review_at 重置为明天。",
+    )
+    async def restore_review_item(request: Request, item_uid: str) -> dict:
+        """恢复已归档的复习卡片。"""
+        success = study_service.restore_review_item(item_uid)
+        if not success:
+            raise HTTPException(status_code=404, detail="review item not found")
+        return {"ok": True, "item_uid": item_uid}
+
+    @app.post(
+        "/api/study/review/archive-by-subject",
+        summary="按学科批量归档",
+        description="批量归档当前用户指定学科下的所有活跃复习卡片。",
+    )
+    async def archive_review_items_by_subject(request: Request, body: ArchiveBySubjectRequest) -> dict:
+        """按学科批量归档复习卡片。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        count = study_service.batch_archive_by_subject(scope["user_id"], body.subject)
+        return {"ok": True, "archived": count, "subject": body.subject}
+
+    @app.get(
+        "/api/study/review/items",
+        summary="复习卡片列表",
+        description="列出当前用户的复习卡片，支持按 goal_uid、subject、status 过滤。",
+    )
+    async def list_review_items(
+        goal_uid: Optional[str] = Query(None),
+        subject: Optional[str] = Query(None),
+        status: str = Query("active"),
+        limit: int = Query(100, ge=1, le=500),
+    ) -> dict:
+        """获取复习卡片列表（默认返回 active 状态）。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        items = study_service.list_review_items(
+            user_id=scope["user_id"],
+            status=status,
+            goal_uid=goal_uid,
+            subject=subject,
+            limit=limit,
+        )
+        return {"items": items, "total": len(items)}
+
     @app.post("/api/study/review/items/{item_uid}/result")
     async def record_review_result(
         request: Request,
@@ -4244,6 +4346,80 @@ def build_dashboard_app(
             goal_uid=goal_uid,
         )
         return {"ok": True, **result}
+
+    # ------------------------------------------------------------------
+    # 学习报告端点（周报 / 月报）
+    # ------------------------------------------------------------------
+
+    @app.get(
+        "/api/study/report/weekly",
+        summary="本周学习报告",
+        description="生成过去 7 天的学习报告，包括专注时长、复习卡片数、连续打卡、学科分布和趋势。",
+    )
+    async def get_weekly_study_report() -> dict:
+        """获取本周（过去 7 天）学习报告。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        report = study_service.generate_weekly_report(scope["user_id"], period_days=7)
+        return {"report": report, "refreshed_at": iso_utc_now()}
+
+    @app.get(
+        "/api/study/report/monthly",
+        summary="本月学习报告",
+        description="生成过去 30 天的学习报告，复用与周报相同的逻辑，period 改为 30 天。",
+    )
+    async def get_monthly_study_report() -> dict:
+        """获取本月（过去 30 天）学习报告。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        report = study_service.generate_weekly_report(scope["user_id"], period_days=30)
+        return {"report": report, "refreshed_at": iso_utc_now()}
+
+    # ------------------------------------------------------------------
+    # 记忆复盘端点
+    # ------------------------------------------------------------------
+
+    class MemoryReviewRequest(BaseModel):
+        action: str  # confirm / archive / update
+
+    @app.get(
+        "/api/memories/review-queue",
+        summary="获取待复盘记忆列表",
+        description="返回超过 30 天未被引用的活跃记忆，按重要性倒序，供 Dashboard 展示复盘。",
+    )
+    async def get_memory_review_queue(
+        limit: int = Query(10, ge=1, le=50, description="返回条数"),
+    ) -> dict:
+        """获取待复盘记忆列表（超过 30 天未引用的高重要性记忆）。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        memories = product_store.get_memories_for_review(scope["user_id"], limit=limit)
+        return {"memories": memories, "total": len(memories)}
+
+    @app.post(
+        "/api/memories/{memory_uid}/review",
+        summary="提交记忆复盘结果",
+        description="对指定记忆提交复盘结果：confirm（确认有效）、archive（归档）、update（标记需要更新）。",
+    )
+    async def review_memory(
+        request: Request,
+        memory_uid: str,
+        body: MemoryReviewRequest,
+    ) -> dict:
+        """提交记忆复盘结果。body: {action: confirm|archive|update}"""
+        allowed_actions = {"confirm", "archive", "update"}
+        if body.action not in allowed_actions:
+            raise HTTPException(status_code=422, detail=f"action 必须为 {allowed_actions} 之一")
+        memory = product_store.get_long_term_memory(memory_uid)
+        if memory is None:
+            raise HTTPException(status_code=404, detail="memory not found")
+        success = product_store.record_memory_review(memory_uid, body.action)
+        if not success:
+            raise HTTPException(status_code=409, detail="记忆复盘操作失败，记忆可能已归档或不存在")
+        return {"ok": True, "memory_uid": memory_uid, "action": body.action}
 
     # ------------------------------------------------------------------
     # 学习热力图端点

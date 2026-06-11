@@ -288,14 +288,18 @@ class StudyService:
         user_id: str,
         status: str = "active",
         goal_uid: str | None = None,
+        subject: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        """列出用户的复习卡片。"""
+        """列出用户的复习卡片。支持按 goal_uid、subject 过滤。"""
         clauses = ["user_id = ?", "status = ?"]
         params: list[Any] = [user_id, status]
         if goal_uid:
             clauses.append("goal_uid = ?")
             params.append(goal_uid)
+        if subject is not None:
+            clauses.append("subject = ?")
+            params.append(subject)
         params.append(limit)
         rows = self.db.fetchall(
             f"""
@@ -307,6 +311,133 @@ class StudyService:
             params,
         )
         return [self._item_from_row(row) for row in rows]
+
+    def batch_add_review_items(
+        self,
+        user_id: str,
+        items: list[dict],
+        goal_uid: str | None = None,
+    ) -> dict:
+        """批量添加复习卡片，在单个事务中完成。
+
+        items 格式：[{"front": str, "back": str, "subject"?: str, "tags"?: list}, ...]
+
+        跳过规则：
+        - front 或 back 为空（None 或空字符串）
+        - front 或 back 超过 2000 字符
+
+        Returns:
+            {added: N, skipped: M, errors: [str]}
+        """
+        MAX_FIELD_LEN = 2000
+        added = 0
+        skipped = 0
+        errors: list[str] = []
+        rows_to_insert: list[tuple] = []
+        now = iso_utc_now()
+        next_review_at = _add_days_iso(now, 1)
+
+        for idx, item in enumerate(items, start=1):
+            front = (item.get("front") or "").strip()
+            back = (item.get("back") or "").strip()
+
+            if not front or not back:
+                errors.append(f"第 {idx} 项：front 或 back 为空")
+                skipped += 1
+                continue
+            if len(front) > MAX_FIELD_LEN:
+                errors.append(f"第 {idx} 项：front 超过 {MAX_FIELD_LEN} 字符限制")
+                skipped += 1
+                continue
+            if len(back) > MAX_FIELD_LEN:
+                errors.append(f"第 {idx} 项：back 超过 {MAX_FIELD_LEN} 字符限制")
+                skipped += 1
+                continue
+
+            item_uid = f"item_{uuid.uuid4().hex}"
+            subject = item.get("subject") or None
+            tags = item.get("tags") or []
+            effective_goal_uid = goal_uid  # 批量操作统一使用传入的 goal_uid
+
+            rows_to_insert.append((
+                item_uid,
+                user_id,
+                effective_goal_uid,
+                front,
+                back,
+                subject,
+                json_dumps(tags),
+                next_review_at,
+                json_dumps({}),
+                now,
+                now,
+            ))
+
+        # 单事务批量插入（executemany 内部自带事务+commit，保证原子性）
+        if rows_to_insert:
+            self.db.executemany(
+                """
+                INSERT INTO review_items (
+                    item_uid, user_id, goal_uid, front, back, subject, tags_json,
+                    ease_factor, interval_days, repetitions, next_review_at,
+                    last_reviewed_at, status, metadata_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 2.5, 1, 0, ?, NULL, 'active', ?, ?, ?)
+                """,
+                rows_to_insert,
+            )
+            added = len(rows_to_insert)
+
+        return {"added": added, "skipped": skipped, "errors": errors}
+
+    def archive_review_item(self, item_uid: str) -> bool:
+        """归档（停止复习）单张卡片，将 status 设为 'archived'。
+
+        Returns:
+            True 表示归档成功，False 表示卡片不存在。
+        """
+        cursor = self.db.execute(
+            """
+            UPDATE review_items
+            SET status = 'archived', updated_at = ?
+            WHERE item_uid = ?
+            """,
+            (iso_utc_now(), item_uid),
+        )
+        return (cursor.rowcount or 0) > 0
+
+    def restore_review_item(self, item_uid: str) -> bool:
+        """恢复已归档的卡片：将 status 重置为 'active'，next_review_at 设为明天。
+
+        Returns:
+            True 表示恢复成功，False 表示卡片不存在。
+        """
+        now = iso_utc_now()
+        next_review_at = _add_days_iso(now, 1)
+        cursor = self.db.execute(
+            """
+            UPDATE review_items
+            SET status = 'active', next_review_at = ?, updated_at = ?
+            WHERE item_uid = ?
+            """,
+            (next_review_at, now, item_uid),
+        )
+        return (cursor.rowcount or 0) > 0
+
+    def batch_archive_by_subject(self, user_id: str, subject: str) -> int:
+        """批量归档指定学科的所有活跃卡片。
+
+        Returns:
+            归档的卡片数量。
+        """
+        cursor = self.db.execute(
+            """
+            UPDATE review_items
+            SET status = 'archived', updated_at = ?
+            WHERE user_id = ? AND subject = ? AND status = 'active'
+            """,
+            (iso_utc_now(), user_id, subject),
+        )
+        return cursor.rowcount or 0
 
     # -----------------------------------------------------------------------
     # 学习会话（study_sessions）
@@ -1293,4 +1424,91 @@ class StudyService:
             unlocked = values.get(ach["type"], 0) >= ach["threshold"]
             result.append({**ach, "unlocked": unlocked, "current": values.get(ach["type"], 0)})
         return result
+
+    # -----------------------------------------------------------------------
+    # 日历导出（ICS 格式）
+    # -----------------------------------------------------------------------
+
+    def export_study_plan_ics(self, user_id: str, days_ahead: int = 14) -> str:
+        """导出学习计划为 ICS 格式（可导入 Apple Calendar / Google Calendar）。
+
+        包含：
+        - 今日到期复习卡片（作为全天提醒事项）
+        - 未来 days_ahead 天内的预计到期卡片
+        - 学习目标截止日期（如果有）
+
+        返回 ICS 格式字符串。
+        """
+        try:
+            import icalendar
+            from datetime import date as _date
+        except ImportError:
+            raise RuntimeError("icalendar 库未安装，请运行：pip install icalendar>=5.0.12")
+
+        now = datetime.now(timezone.utc)
+        cal = icalendar.Calendar()
+        cal.add("prodid", "-//Study Senpai//studysenpai//CN")
+        cal.add("version", "2.0")
+        cal.add("x-wr-calname", "Study Senpai 学习计划")
+        cal.add("x-wr-timezone", "UTC")
+
+        # 到期复习卡片（按日期分组）
+        end_date = now + timedelta(days=days_ahead)
+        rows = self.db.fetchall(
+            """
+            SELECT item_uid, front, subject, next_review_at
+            FROM review_items
+            WHERE user_id = ? AND status = 'active'
+              AND next_review_at <= ?
+            ORDER BY next_review_at
+            """,
+            (user_id, end_date.isoformat()),
+        )
+        # 按日期分组
+        from collections import defaultdict
+        daily_cards: dict = defaultdict(list)
+        for row in rows:
+            review_dt_str = row["next_review_at"]
+            try:
+                review_dt = datetime.fromisoformat(review_dt_str)
+                day_str = review_dt.date().isoformat()
+            except (ValueError, AttributeError):
+                day_str = now.date().isoformat()
+            daily_cards[day_str].append(row["front"])
+
+        for day_str, fronts in sorted(daily_cards.items()):
+            event = icalendar.Event()
+            try:
+                event_date = _date.fromisoformat(day_str)
+            except ValueError:
+                continue
+            summary = f"📚 复习提醒：{len(fronts)} 张卡片"
+            description = "\n".join(f"• {f[:80]}" for f in fronts[:10])
+            if len(fronts) > 10:
+                description += f"\n...共 {len(fronts)} 张"
+            event.add("summary", summary)
+            event.add("dtstart", event_date)
+            event.add("dtend", event_date + timedelta(days=1))
+            event.add("description", description)
+            event.add("x-study-senpai-type", "review_reminder")
+            cal.add_component(event)
+
+        # 学习目标截止日期
+        goals = self.list_goals(user_id)
+        for goal in goals:
+            if not goal.get("target_date"):
+                continue
+            try:
+                target = _date.fromisoformat(goal["target_date"][:10])
+            except (ValueError, TypeError):
+                continue
+            event = icalendar.Event()
+            event.add("summary", f"🎯 目标截止：{goal['title']}")
+            event.add("dtstart", target)
+            event.add("dtend", target + timedelta(days=1))
+            event.add("description", f"学习目标：{goal['title']}\n学科：{goal.get('subject', '未指定')}\n进度：{goal.get('progress_pct', 0)}%")
+            event.add("x-study-senpai-type", "goal_deadline")
+            cal.add_component(event)
+
+        return cal.to_ical().decode("utf-8")
 
