@@ -768,6 +768,188 @@ class StudyService:
             "created_at": row["created_at"],
         }
 
+    # -----------------------------------------------------------------------
+    # Anki TSV 导入 / 导出
+    # -----------------------------------------------------------------------
+
+    def export_to_anki_tsv(self, user_id: str, goal_uid: str | None = None) -> str:
+        """导出复习卡片为 Anki TSV 格式（front\tback\ttags）。
+
+        每行格式：front<TAB>back<TAB>tag1 tag2 ...
+        仅导出 status='active' 的卡片。
+        """
+        items = self.list_review_items(user_id, status="active", goal_uid=goal_uid, limit=10000)
+        lines: list[str] = []
+        for item in items:
+            front = str(item.get("front") or "").replace("\t", " ").replace("\n", " ").replace("\r", " ")
+            back = str(item.get("back") or "").replace("\t", " ").replace("\n", " ").replace("\r", " ")
+            tags_list: list[str] = item.get("tags") or []
+            tags_str = " ".join(str(t).replace(" ", "_") for t in tags_list if t)
+            lines.append(f"{front}\t{back}\t{tags_str}")
+        return "\n".join(lines)
+
+    def import_from_anki_tsv(
+        self,
+        user_id: str,
+        tsv_content: str,
+        goal_uid: str | None = None,
+    ) -> dict:
+        """从 Anki TSV 内容导入复习卡片。
+
+        每行格式：front<TAB>back 或 front<TAB>back<TAB>tags（空格分隔）
+        跳过空行、注释行（# 开头）、格式错误行。
+
+        安全限制：
+        - 内容不超过 10MB
+        - 单条 front/back 不超过 2000 字符
+        - 最多导入 1000 条
+
+        Returns:
+            {imported: N, skipped: M, errors: [str]}
+        """
+        MAX_BYTES = 10 * 1024 * 1024  # 10MB
+        MAX_ITEMS = 1000
+        MAX_FIELD_LEN = 2000
+
+        # 大小检查
+        if len(tsv_content.encode("utf-8")) > MAX_BYTES:
+            return {"imported": 0, "skipped": 0, "errors": ["内容超过 10MB 限制"]}
+
+        imported = 0
+        skipped = 0
+        errors: list[str] = []
+
+        for lineno, line in enumerate(tsv_content.splitlines(), start=1):
+            raw = line.rstrip("\r\n")
+            # 跳过空行和注释行
+            if not raw.strip() or raw.lstrip().startswith("#"):
+                skipped += 1
+                continue
+            # 达到上限
+            if imported >= MAX_ITEMS:
+                skipped += 1
+                continue
+
+            parts = raw.split("\t")
+            if len(parts) < 2:
+                errors.append(f"第 {lineno} 行：缺少 back 列（应为 front\\tback 格式）")
+                skipped += 1
+                continue
+
+            front = parts[0].strip()
+            back = parts[1].strip()
+            tags_raw = parts[2].strip() if len(parts) >= 3 else ""
+
+            if not front or not back:
+                errors.append(f"第 {lineno} 行：front 或 back 为空")
+                skipped += 1
+                continue
+            if len(front) > MAX_FIELD_LEN:
+                errors.append(f"第 {lineno} 行：front 超过 {MAX_FIELD_LEN} 字符限制")
+                skipped += 1
+                continue
+            if len(back) > MAX_FIELD_LEN:
+                errors.append(f"第 {lineno} 行：back 超过 {MAX_FIELD_LEN} 字符限制")
+                skipped += 1
+                continue
+
+            tags: list[str] = [t.replace("_", " ") for t in tags_raw.split() if t] if tags_raw else []
+
+            try:
+                self.add_review_item(
+                    user_id=user_id,
+                    front=front,
+                    back=back,
+                    goal_uid=goal_uid,
+                    tags=tags,
+                )
+                imported += 1
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"第 {lineno} 行：写入失败 — {exc}")
+                skipped += 1
+
+        return {"imported": imported, "skipped": skipped, "errors": errors}
+
+    # -----------------------------------------------------------------------
+    # 学习统计可视化数据
+    # -----------------------------------------------------------------------
+
+    def get_heatmap_data(self, user_id: str, days: int = 90) -> list[dict]:
+        """返回过去 N 天的学习热力图数据（类似 GitHub contribution graph）。
+
+        每条记录：{date: "2026-06-01", count: int, minutes: int}
+        - count  = 当天已结束的学习会话数量（ended_at IS NOT NULL）
+        - minutes = 当天总 focus_minutes
+        """
+        # 计算起始日期（UTC）
+        today = datetime.now(timezone.utc).date()
+        start_date = today - timedelta(days=days - 1)
+        start_iso = datetime(start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc).isoformat()
+
+        rows = self.db.fetchall(
+            """
+            SELECT DATE(started_at) AS study_date,
+                   COUNT(*) AS session_count,
+                   COALESCE(SUM(focus_minutes), 0) AS total_minutes
+            FROM study_sessions
+            WHERE user_id = ?
+              AND ended_at IS NOT NULL
+              AND started_at >= ?
+            GROUP BY DATE(started_at)
+            ORDER BY study_date ASC
+            """,
+            (user_id, start_iso),
+        )
+        # 构建日期 → 数据的 lookup
+        data_by_date: dict[str, dict] = {}
+        for row in rows:
+            data_by_date[row["study_date"]] = {
+                "count": int(row["session_count"]),
+                "minutes": int(row["total_minutes"]),
+            }
+
+        # 生成完整日期序列（N 天，无数据的日期填 0）
+        result: list[dict] = []
+        for i in range(days):
+            d = start_date + timedelta(days=i)
+            date_str = d.strftime("%Y-%m-%d")
+            entry = data_by_date.get(date_str, {"count": 0, "minutes": 0})
+            result.append({
+                "date": date_str,
+                "count": entry["count"],
+                "minutes": entry["minutes"],
+            })
+        return result
+
+    def get_subject_distribution(self, user_id: str) -> list[dict]:
+        """返回复习卡片的学科分布。
+
+        格式：[{subject: "数学", count: 15, mastered: 8}, ...]
+        - count    = 该科目下 active 卡片总数
+        - mastered = repetitions >= 3 的卡片数（视为已掌握）
+        """
+        rows = self.db.fetchall(
+            """
+            SELECT
+                COALESCE(subject, '未分类') AS subject,
+                COUNT(*) AS total_count,
+                SUM(CASE WHEN repetitions >= 3 THEN 1 ELSE 0 END) AS mastered_count
+            FROM review_items
+            WHERE user_id = ? AND status = 'active'
+            GROUP BY subject
+            ORDER BY total_count DESC
+            """,
+            (user_id,),
+        )
+        return [
+            {
+                "subject": row["subject"],
+                "count": int(row["total_count"]),
+                "mastered": int(row["mastered_count"]),
+            }
+            for row in rows
+        ]
+
     def list_sessions(
         self,
         user_id: str,

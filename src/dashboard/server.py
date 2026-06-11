@@ -4115,5 +4115,103 @@ def build_dashboard_app(
         session = study_service.get_session(session_uid)
         return {"ok": True, "session": session}
 
+    # ------------------------------------------------------------------
+    # Anki TSV 导出端点
+    # ------------------------------------------------------------------
+
+    @app.get(
+        "/api/study/review/export-anki",
+        summary="导出 Anki TSV",
+        description="将当前用户的复习卡片导出为 Anki Basic deck 兼容的 TSV 文件（front\\tback\\ttags）。",
+    )
+    async def export_anki_tsv(
+        goal_uid: Optional[str] = Query(None, description="可选：只导出某个目标下的卡片"),
+    ) -> Response:
+        """以 TSV 附件形式下载复习卡片（Anki 格式）。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        tsv_content = study_service.export_to_anki_tsv(
+            user_id=scope["user_id"],
+            goal_uid=goal_uid,
+        )
+        return Response(
+            content=tsv_content.encode("utf-8"),
+            media_type="text/tab-separated-values; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="study-review.tsv"'},
+        )
+
+    # ------------------------------------------------------------------
+    # Anki TSV 导入端点
+    # ------------------------------------------------------------------
+
+    @app.post(
+        "/api/study/review/import-anki",
+        summary="导入 Anki TSV",
+        description="上传 Anki TSV 文件（multipart/form-data），批量创建复习卡片。",
+    )
+    async def import_anki_tsv(
+        request: Request,
+        file: UploadFile = File(..., description="TSV 文件（Anki Basic 格式）"),
+        goal_uid: Optional[str] = Query(None, description="可选：将卡片关联到某个目标"),
+    ) -> dict:
+        """从上传的 TSV 文件批量导入复习卡片。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+
+        # 文件大小预检（读取全部内容，服务端再次做大小限制）
+        MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+        raw_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(raw_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="上传文件超过 10MB 限制")
+
+        try:
+            tsv_content = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=422, detail="文件编码错误，仅支持 UTF-8")
+
+        result = study_service.import_from_anki_tsv(
+            user_id=scope["user_id"],
+            tsv_content=tsv_content,
+            goal_uid=goal_uid,
+        )
+        return {"ok": True, **result}
+
+    # ------------------------------------------------------------------
+    # 学习热力图端点
+    # ------------------------------------------------------------------
+
+    @app.get(
+        "/api/study/heatmap",
+        summary="学习热力图数据",
+        description="返回过去 N 天每日学习会话数和专注时长，用于绘制 GitHub 风格热力图。",
+    )
+    async def get_study_heatmap(
+        days: int = Query(90, ge=1, le=365, description="返回过去多少天的数据"),
+    ) -> dict:
+        """获取学习热力图数据（date/count/minutes）。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        data = study_service.get_heatmap_data(scope["user_id"], days=days)
+        return {"data": data, "days": days, "refreshed_at": iso_utc_now()}
+
+    # ------------------------------------------------------------------
+    # 学科分布端点
+    # ------------------------------------------------------------------
+
+    @app.get(
+        "/api/study/distribution",
+        summary="复习卡片学科分布",
+        description="返回各学科复习卡片数量及掌握情况（repetitions >= 3 视为掌握）。",
+    )
+    async def get_study_distribution() -> dict:
+        """获取学科分布数据（subject/count/mastered）。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        distribution = study_service.get_subject_distribution(scope["user_id"])
+        return {"distribution": distribution, "refreshed_at": iso_utc_now()}
 
     return app
