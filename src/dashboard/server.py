@@ -2064,6 +2064,23 @@ def build_dashboard_app(
         graph["refreshed_at"] = iso_utc_now()
         return JSONResponse(graph)
 
+    @app.get(
+        "/api/memories/health",
+        summary="记忆健康度报告",
+        description="返回记忆库的健康度评分（0-100），包含覆盖率、新鲜度、可信度、多样性分析及改进建议。",
+    )
+    async def memories_health() -> JSONResponse:
+        """记忆健康度报告（纯本地计算，不依赖 LLM）。"""
+        scope = current_scope_snapshot()
+        if scope is None:
+            return JSONResponse({"health": None, "user_id": None, "refreshed_at": iso_utc_now()})
+        health = product_store.get_memory_health_score(scope["user_id"])
+        return JSONResponse({
+            "health": health,
+            "user_id": scope["user_id"],
+            "refreshed_at": iso_utc_now(),
+        })
+
     @app.post("/api/memories/{memory_uid}/archive", response_model=ActionResponse)
     async def archive_memory(request: Request, memory_uid: str) -> ActionResponse:
         memory = product_store.get_long_term_memory(memory_uid)
@@ -3718,6 +3735,25 @@ def build_dashboard_app(
             return {"sessions": [], "refreshed_at": iso_utc_now()}
         sessions = study_service.list_sessions(scope["user_id"], goal_uid=goal_uid, limit=limit)
         return {"sessions": sessions, "total": len(sessions), "refreshed_at": iso_utc_now()}
+
+    @app.get("/api/study/sessions/active")
+    async def study_active_session() -> dict:
+        """获取当前活跃学习会话（用于 Dashboard 显示计时器）。
+
+        返回：
+        - session: 活跃会话 dict，或 null（无进行中会话）
+        - active: bool 是否有活跃会话
+        - refreshed_at: str
+        """
+        scope = current_scope_snapshot()
+        if scope is None:
+            return {"session": None, "active": False, "refreshed_at": iso_utc_now()}
+        session = study_service.get_active_session(scope["user_id"])
+        return {
+            "session": session,
+            "active": session is not None,
+            "refreshed_at": iso_utc_now(),
+        }
 
     @app.get("/api/study/summary")
     async def study_daily_summary() -> dict:
