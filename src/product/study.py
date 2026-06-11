@@ -358,6 +358,122 @@ class StudyService:
     # 统计
     # -----------------------------------------------------------------------
 
+    def generate_study_plan(
+        self,
+        user_id: str,
+        goal_uid: str,
+        days_until_target: int | None = None,
+    ) -> dict[str, Any]:
+        """基于目标和剩余时间，生成每日学习计划建议（纯本地计算，不依赖 LLM）。
+
+        计算规则：
+        - urgency：
+            None 或 > 90 天 → "low"
+            31-90 天       → "medium"
+            8-30 天        → "high"
+            ≤ 7 天         → "critical"
+        - daily_minutes：low=30, medium=45, high=60, critical=90
+        - cards_per_day：min(20, max(5, due_today + 3))
+        - focus_areas：取目标 subject 字段，若为空则给通用建议
+        - weekly_checkpoints：按 urgency 给出 1-4 个里程碑
+
+        Returns:
+            包含以下键的 dict：
+            - daily_minutes: 建议每日学习时长
+            - cards_per_day: 建议每日复习卡片数
+            - focus_areas: 建议重点领域列表
+            - weekly_checkpoints: 每周里程碑列表
+            - urgency: 紧迫程度 (low/medium/high/critical)
+        """
+        # 如果未传 days_until_target，尝试从目标的 target_date 字段自动计算
+        effective_days = days_until_target
+        if effective_days is None:
+            goal = self._get_goal_by_uid(goal_uid)
+            if goal and goal.get("target_date"):
+                try:
+                    target_dt = datetime.fromisoformat(goal["target_date"])
+                    if target_dt.tzinfo is None:
+                        target_dt = target_dt.replace(tzinfo=timezone.utc)
+                    now_dt = datetime.now(timezone.utc)
+                    effective_days = max(0, (target_dt - now_dt).days)
+                except (ValueError, TypeError):
+                    effective_days = None
+
+        # 判断紧迫度
+        if effective_days is None or effective_days > 90:
+            urgency = "low"
+        elif effective_days > 30:
+            urgency = "medium"
+        elif effective_days > 7:
+            urgency = "high"
+        else:
+            urgency = "critical"
+
+        # 每日推荐学习时长
+        daily_minutes_map = {"low": 30, "medium": 45, "high": 60, "critical": 90}
+        daily_minutes = daily_minutes_map[urgency]
+
+        # 今日到期卡片数 → 每日推荐卡片数
+        now = iso_utc_now()
+        due_row = self.db.fetchone(
+            """
+            SELECT COUNT(*) AS cnt FROM review_items
+            WHERE user_id = ? AND goal_uid = ? AND status = 'active'
+              AND (next_review_at IS NULL OR next_review_at <= ?)
+            """,
+            (user_id, goal_uid, now),
+        )
+        due_today = int(due_row["cnt"]) if due_row else 0
+        cards_per_day = min(20, max(5, due_today + 3))
+
+        # 重点领域：从目标 subject 字段推断
+        goal = self._get_goal_by_uid(goal_uid)
+        focus_areas: list[str] = []
+        if goal:
+            subject = goal.get("subject") or ""
+            if subject:
+                focus_areas = [subject]
+        if not focus_areas:
+            focus_areas = ["概念理解", "练习巩固", "错题复盘"]
+
+        # 每周里程碑
+        checkpoint_templates: dict[str, list[str]] = {
+            "low": [
+                "第1周：建立学习节奏，完成基础模块",
+                "第2周：完成初级卡片复习",
+                "第3周：攻克重点难点",
+                "第4周：全面复盘，查漏补缺",
+            ],
+            "medium": [
+                "第1周：快速过一遍所有知识点",
+                "第2周：重点突破，强化薄弱环节",
+                "第3周：模拟测试 + 错题整理",
+            ],
+            "high": [
+                "第1-2天：梳理核心知识框架",
+                "第3-5天：高频卡片全面复习",
+                "第6-7天：模拟演练 + 查漏",
+            ],
+            "critical": [
+                "今天：优先复习到期卡片",
+                "明天：攻克最薄弱的知识点",
+                "冲刺：保持专注，稳定发挥",
+            ],
+        }
+        weekly_checkpoints = checkpoint_templates[urgency]
+
+        return {
+            "goal_uid": goal_uid,
+            "user_id": user_id,
+            "urgency": urgency,
+            "days_until_target": effective_days,
+            "daily_minutes": daily_minutes,
+            "cards_per_day": cards_per_day,
+            "focus_areas": focus_areas,
+            "weekly_checkpoints": weekly_checkpoints,
+            "computed_at": iso_utc_now(),
+        }
+
     def generate_daily_summary(self, user_id: str) -> dict[str, Any]:
         """生成当日学习摘要（纯本地计算，不依赖 LLM）。
 

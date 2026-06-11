@@ -369,6 +369,83 @@ class MemoryStore:
         )
         return [self._long_term_memory_from_row(row) for row in rows]
 
+    def list_long_term_memories(
+        self,
+        user_id: str,
+        *,
+        status: str = "active",
+        memory_type: str | None = None,
+        min_importance: float | None = None,
+        min_confidence: float | None = None,
+        tags: list[str] | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
+        order_by: str = "importance DESC, updated_at DESC",
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[LongTermMemoryRecord]:
+        """带高级过滤的长期记忆列表查询。
+
+        参数：
+            user_id: 用户 ID（必填）
+            status: 记忆状态，默认 'active'
+            memory_type: 精确匹配 memory_type
+            min_importance: 最小重要性阈值（含）
+            min_confidence: 最小可信度阈值（含）
+            tags: 标签列表，任意一个匹配即返回（OR 语义）
+            created_after: 创建时间下界（ISO8601，含）
+            created_before: 创建时间上界（ISO8601，含）
+            order_by: SQL ORDER BY 子句
+            limit: 返回上限，None 表示不限
+            offset: 分页偏移
+        """
+        clauses: list[str] = ["user_id = ?", "status = ?"]
+        params: list[Any] = [user_id, status]
+
+        if memory_type is not None:
+            clauses.append("memory_type = ?")
+            params.append(memory_type)
+
+        if min_importance is not None:
+            clauses.append("importance >= ?")
+            params.append(min_importance)
+
+        if min_confidence is not None:
+            clauses.append("confidence >= ?")
+            params.append(min_confidence)
+
+        if created_after is not None:
+            clauses.append("created_at >= ?")
+            params.append(created_after)
+
+        if created_before is not None:
+            clauses.append("created_at <= ?")
+            params.append(created_before)
+
+        where = " AND ".join(clauses)
+        sql = f"SELECT * FROM long_term_memories WHERE {where} ORDER BY {order_by}"
+
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+            if offset:
+                sql += " OFFSET ?"
+                params.append(offset)
+        elif offset:
+            # SQLite 要求 LIMIT -1 才能使用 OFFSET
+            sql += " LIMIT -1 OFFSET ?"
+            params.append(offset)
+
+        rows = self.db.fetchall(sql, tuple(params))
+
+        if tags:
+            # tags 过滤：JSON 数组中任意一个 tag 匹配即保留（在 Python 层过滤）
+            # SQLite 不支持 JSON_EACH 的可移植方式，所以在应用层过滤更安全
+            tag_set = set(tags)
+            rows = [r for r in rows if tag_set.intersection(set(json_loads(r["tags_json"], [])))]
+
+        return [self._long_term_memory_from_row(row) for row in rows]
+
     def touch_long_term_memories(self, memory_uids: list[str]) -> None:
         if not memory_uids:
             return

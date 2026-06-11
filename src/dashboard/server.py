@@ -1458,7 +1458,12 @@ def build_dashboard_app(
             return RedirectResponse("/", status_code=303)
         return render_login_page(request)
 
-    @app.post("/api/login", response_model=LoginResponse)
+    @app.post(
+        "/api/login",
+        response_model=LoginResponse,
+        summary="Dashboard 登录",
+        description="使用用户名和密码进行 Dashboard 身份验证，成功后颁发会话并返回 CSRF Token。",
+    )
     async def dashboard_login_api(request: Request, body: LoginRequest) -> LoginResponse:
         username = body.username.strip()
         password = body.password
@@ -1553,7 +1558,12 @@ def build_dashboard_app(
     async def dashboard_home(request: Request) -> HTMLResponse:
         return render_dashboard_page(request)
 
-    @app.get("/api/overview", response_model=OverviewResponse)
+    @app.get(
+        "/api/overview",
+        response_model=OverviewResponse,
+        summary="系统概览",
+        description="返回当前 scope 的整体运行状态概览，包含记忆数、学习进度、性能指标等聚合数据。",
+    )
     async def overview() -> OverviewResponse:
         scope = current_scope_snapshot()
         overview_payload = product_store.get_overview(user_id=None if scope is None else scope["user_id"])
@@ -1917,12 +1927,23 @@ def build_dashboard_app(
             summary={"retrying": sum(1 for item in items if item["status"] == "retrying")},
         )
 
-    @app.get("/api/memories", response_model=PanelEnvelope)
+    @app.get(
+        "/api/memories",
+        response_model=PanelEnvelope,
+        summary="长期记忆列表",
+        description="分页查询长期记忆，支持关键词搜索及高级过滤（重要性、可信度、类型、标签、创建时间范围）。",
+    )
     async def memories(
         q: str = "",
         sort: str = "importance",
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=60),
+        memory_type: Optional[str] = None,
+        min_importance: Optional[float] = Query(None, ge=0.0, le=1.0),
+        min_confidence: Optional[float] = Query(None, ge=0.0, le=1.0),
+        tags: Optional[str] = None,
+        created_after: Optional[str] = None,
+        created_before: Optional[str] = None,
     ) -> PanelEnvelope:
         page, page_size = _normalize_page(page, page_size)
         normalized_q = _normalize_q(q)
@@ -1945,6 +1966,22 @@ def build_dashboard_app(
         if search_clause:
             clauses.append(search_clause)
             params.extend(search_params)
+        # 高级过滤条件（参数化查询，不拼接字符串）
+        if memory_type:
+            clauses.append("ltm.memory_type = ?")
+            params.append(memory_type)
+        if min_importance is not None:
+            clauses.append("ltm.importance >= ?")
+            params.append(min_importance)
+        if min_confidence is not None:
+            clauses.append("ltm.confidence >= ?")
+            params.append(min_confidence)
+        if created_after:
+            clauses.append("ltm.created_at >= ?")
+            params.append(created_after)
+        if created_before:
+            clauses.append("ltm.created_at <= ?")
+            params.append(created_before)
         rows, total = _run_paged_select(
             db=product_store.db,
             columns="ltm.*, mus.hit_count, mus.last_hit_at",
@@ -1959,6 +1996,12 @@ def build_dashboard_app(
             page_size=page_size,
         )
         items = [_serialize_memory_row(row) for row in rows]
+        # tags 过滤（在 Python 层过滤，支持逗号分隔的 OR 语义）
+        if tags:
+            tag_set = {t.strip() for t in tags.split(",") if t.strip()}
+            if tag_set:
+                items = [it for it in items if tag_set.intersection(set(it.get("tags") or []))]
+                total = len(items)
         top_hits = product_store.list_top_memory_hits(scope["user_id"], limit=8)
         return _build_panel_response(
             active_scope=scope,
@@ -1970,6 +2013,14 @@ def build_dashboard_app(
             sort=sort,
             highlights={"top_hits": top_hits},
             summary={"sort_options": list(order_map.keys())},
+            filters={
+                "memory_type": memory_type or "",
+                "min_importance": min_importance,
+                "min_confidence": min_confidence,
+                "tags": tags or "",
+                "created_after": created_after or "",
+                "created_before": created_before or "",
+            },
         )
 
     @app.post("/api/memories/{memory_uid}/archive", response_model=ActionResponse)
@@ -2012,7 +2063,11 @@ def build_dashboard_app(
         )
         return ActionResponse(ok=True, message="长期记忆已恢复。", item_id=memory_uid)
 
-    @app.get("/api/memories/export")
+    @app.get(
+        "/api/memories/export",
+        summary="导出记忆备份",
+        description="将当前用户的所有活跃长期记忆导出为 JSON 或 Markdown 文件供下载备份。",
+    )
     async def export_memories(
         fmt: str = Query("json", alias="format"),
         user_id: Optional[str] = Query(None),
@@ -2066,7 +2121,11 @@ def build_dashboard_app(
             headers={"Content-Disposition": "attachment; filename=\"memories_export.json\""},
         )
 
-    @app.post("/api/memories/import")
+    @app.post(
+        "/api/memories/import",
+        summary="导入记忆备份",
+        description="从 JSON 备份文件批量导入长期记忆，自动跳过内容相同的已存在记忆（去重）。",
+    )
     async def import_memories(
         request: Request,
         file: UploadFile = File(...),
@@ -3795,7 +3854,11 @@ def build_dashboard_app(
             return str(scope["user_id"])
         return ""
 
-    @app.get("/api/study/goals")
+    @app.get(
+        "/api/study/goals",
+        summary="学习目标列表",
+        description="列出当前 scope 用户的学习目标，可按状态（active/completed/archived）过滤。",
+    )
     async def list_study_goals(
         status: str = "active",
     ) -> dict:
@@ -3806,7 +3869,11 @@ def build_dashboard_app(
         goals = study_service.list_goals(scope["user_id"], status=status)
         return {"goals": goals, "total": len(goals)}
 
-    @app.post("/api/study/goals")
+    @app.post(
+        "/api/study/goals",
+        summary="创建学习目标",
+        description="创建新的学习目标，支持设置科目、目标日期和描述信息。",
+    )
     async def create_study_goal(request: Request, body: StudyGoalCreateRequest) -> dict:
         """创建新学习目标。"""
         goal = study_service.create_goal(
@@ -3842,7 +3909,11 @@ def build_dashboard_app(
             raise HTTPException(status_code=404, detail="goal not found")
         return {"ok": True, "goal_uid": goal_uid}
 
-    @app.get("/api/study/review")
+    @app.get(
+        "/api/study/review",
+        summary="获取到期复习卡片",
+        description="返回当前用户今日到期的间隔复习卡片列表，按 SM-2 算法排序。",
+    )
     async def get_due_review_items(limit: int = Query(20, ge=1, le=100)) -> dict:
         """获取今日到期的复习卡片列表。"""
         scope = current_scope_snapshot()
