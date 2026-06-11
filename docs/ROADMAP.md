@@ -2,67 +2,115 @@
 
 ## 中文优先
 
-这份路线图的目标，是让项目继续作为本地优先框架保持可用，同时逐步适配更安全的公开协作。
+这份路线图的目标，是让 Study Senpai 成为最好用的本地优先 AI 学习陪伴框架。
 
-## Phase 1：安全开源打包
+---
 
-- 加固 `.gitignore`，覆盖本地状态、密钥、SQLite、日志、聊天记录和 iOS 私有文件。
-- 增加最小 Mobile Bearer Token 认证。
-- 移除 iOS 中硬编码的后端 URL。
-- 围绕 Study Senpai 重写 README。
-- 增加基础开源文档和政策文件。
+## 已完成（v0.1.x）
 
-## Phase 1.5：发布验收与公开门面
+- [x] 本地优先 Python 后端 + SQLite 持久化
+- [x] FastAPI Dashboard（审核、可观测性、记忆治理）
+- [x] Discord Bot 运行时
+- [x] Mobile API（供 iOS App 和第三方客户端）
+- [x] SwiftUI iOS 客户端
+- [x] 长期记忆自动提取、候选审核
+- [x] 共享日记 Dashboard/Mobile API
+- [x] 主动关怀消息（ProactiveMessageService）
+- [x] CompanionDayEngine（AI 日常状态）
+- [x] RealityContextService（天气/日历感知）
+- [x] 附件分析（PDF、Word、图片、音频）
+- [x] 后台任务管理器
+- [x] 健康检查（浅/深巡检）
+- [x] Dashboard 安全认证（CSRF、登录锁定、审计日志）
+- [x] **Persona YAML 注册表** — 多人格，无需改代码
+- [x] **Docker 支持** — `docker compose up -d` 一键部署
+- [x] **内置 Web Chat UI** — 浏览器直接对话
+- [x] **记忆导出/导入** — JSON/Markdown 备份与迁移
+- [x] **学习目标 + SM-2 间隔复习** — 闪卡系统
+- [x] **CI/CD 增强** — 多 Python 版本、lint、密钥扫描、Docker 构建
+- [x] **完整文档体系** — FAQ、Privacy、Deployment、LLM Providers
 
-- 收紧发布前敏感文件检查。
-- 改进 GitHub 访问者首屏 README 定位。
-- 使用干净 demo 数据库录制公开 demo 后再加入展示。
-- 增加 GitHub issue、pull request、行为准则、更新日志和 CI hygiene 文件。
-- 保持 CI 轻量：安装 Python 依赖并运行 contract/smoke 脚本。
-- 将主要 Markdown 文档调整为中文优先、英文备用。
+---
 
-## Phase 2：配置与部署加固
+## Phase 2 — 体验打磨（进行中）
 
-- 在 CI 中增加生成密钥检查。
-- 增加生产部署指南，包含反向代理、HTTPS、防火墙和 token 轮换。
-- 增加 Dashboard-only、Discord-only 和 full-stack 模式的 `.env.local.example` 示例。
-- 增加不泄漏私有应用状态的健康检查 profile。
-- 为 mobile 和 Dashboard 写 endpoint 增加限流。
+### 2.1 Web Chat 增强
+- [ ] Markdown 渲染（代码块高亮、粗体）
+- [ ] 图片/文件拖拽上传
+- [ ] 打字状态动画（dots）
+- [ ] 消息时间戳
 
-## Phase 3：人格注册表
+### 2.2 Dashboard 改进
+- [ ] 学习目标看板（进度可视化）
+- [ ] 间隔复习面板（Dashboard 内可直接练习）
+- [ ] 深色主题优化
 
-- 将人格 metadata 和风格规则迁移到 YAML/JSON。
-- 使用 typed schema 校验人格配置。
-- 支持不改核心聊天代码的多人格。
-- 为现有沈知微默认配置增加迁移说明。
+### 2.3 人格系统
+- [ ] 社区人格库 — `personas/community/` 目录，欢迎 PR
+- [ ] 人格热重载（运行时切换，不重启）
+- [ ] 人格版本控制（支持 `@version` 字段）
 
-## Phase 4：记忆治理
+---
 
-- 增加显式保留策略控制。
-- 增加带脱敏的记忆导出/导入。
-- 为敏感记忆增加审核队列。
-- 增加审计视图，展示哪些记忆影响了某次回复。
+## Phase 3 — 学习功能深化
 
-## Phase 5：学习工作流
+- [ ] **学习会话分析**：专注时长、完成率、streak 统计
+- [ ] **Anki 卡片导入**：从 `.apkg` 文件导入闪卡
+- [ ] **学习目标 AI 分解**：输入大目标，AI 自动分解成子任务
+- [ ] **知识图谱可视化**：展示学习内容之间的关联
+- [ ] **错题本**：自动记录复习失败的卡片，重点复习
 
-- 已落地：共享日记 Dashboard/Mobile API，用于展示 day engine 产生的日常片段、用户回应、语音输入和复盘记录。
-- 增加目标计划、学习 session、间隔复习和进度摘要。
-- 增加附件到学习笔记的流程。
-- 增加本地 analytics，用于关注 focus、cadence 和 streak，不默认云同步。
+---
 
-## Phase 6：iOS 成熟度
+## Phase 4 — 部署与安全加固
 
-- 增加 server profile 管理。
-- 增加 token 校验和连接诊断。
-- 增加认证媒体缓存。
-- 改进离线时间线体验。
+- [ ] **Nginx/Caddy 反向代理一键配置**：开箱即用的 HTTPS 配置
+- [ ] **多用户支持**：独立用户空间隔离（适合家庭/小团队部署）
+- [ ] **限流和请求配额**：保护公网部署
+- [ ] **备份自动化**：定时备份 + 验证
+
+---
+
+## Phase 5 — 记忆治理
+
+- [ ] **记忆保留策略**：设置记忆过期时间
+- [ ] **记忆脱敏工具**：批量处理敏感记忆
+- [ ] **记忆版本历史**：查看记忆变更记录
+- [ ] **记忆导出完整版**：包含聊天历史
+
+---
+
+## Phase 6 — iOS 成熟度
+
+- [ ] **Server Profile 管理**：多服务端配置切换
+- [ ] **Token 校验页面**：连接诊断 UI
+- [ ] **认证媒体缓存**：离线查看生成的图片
+- [ ] **推送通知**：主动消息本地通知
+- [ ] **iCloud 同步**：服务端配置跨设备同步
+
+---
+
+## 长期方向
+
+- **插件 API**：允许社区扩展工具和集成
+- **知识库接入**：接入 Notion、Obsidian 等笔记工具
+- **语音支持**：语音输入/输出（TTS/STT）
+- **多平台 Bot**：微信、Telegram、Slack、飞书
+
+---
 
 ## English fallback
 
-This roadmap keeps Study Senpai useful as a local-first framework while preparing it for safer public collaboration.
+**Completed in v0.1.x:** Python backend, SQLite, Dashboard, Discord bot, iOS client, memory pipeline, proactive messaging, day engine, reality context, attachments, Persona YAML registry, Docker, Web Chat UI, memory export/import, spaced repetition with SM-2, CI/CD, and full documentation suite.
 
-Phase 1 focuses on safe open-source packaging: `.gitignore` hardening, mobile Bearer token auth, removal of hardcoded iOS URLs, README positioning, and baseline policy docs.
+**Phase 2:** Web Chat improvements (Markdown, file upload), Dashboard study panels, persona hot-reload.
 
-Phase 1.5 focuses on release acceptance and public face: pre-publish sensitive checks, README polish, demo recordings from clean fake data, GitHub templates, lightweight CI, and Chinese-first Markdown docs with English fallback.
+**Phase 3:** Study session analytics, Anki import, AI goal decomposition, knowledge graph.
 
-Phase 2 hardens config and deployment. Phase 3 moves persona definitions into YAML/JSON. Phase 4 adds memory governance. Phase 5 expands study workflows. Phase 6 improves iOS maturity.
+**Phase 4:** Nginx/Caddy config, multi-user isolation, rate limiting, automated backups.
+
+**Phase 5:** Memory retention policies, redaction tools, export versioning.
+
+**Phase 6:** iOS server profiles, push notifications, iCloud sync.
+
+**Long-term:** Plugin API, knowledge base integration (Notion/Obsidian), voice, multi-platform bots.

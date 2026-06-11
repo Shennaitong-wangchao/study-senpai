@@ -1,12 +1,33 @@
 [project]
 name = "study-senpai"
-version = "0.1.0"
-description = "Local-first learning companion framework with memory, dashboard, mobile API, and iOS client."
+version = "0.2.0"
+description = "Local-first AI learning companion framework with long-term memory, spaced repetition, YAML personas, and multi-platform support."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+keywords = [
+    "ai-companion", "learning", "spaced-repetition", "long-term-memory",
+    "local-first", "self-hosted", "discord-bot", "fastapi", "sqlite"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Education",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I"]
+ignore = ["E501", "W503"]

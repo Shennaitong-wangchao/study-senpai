@@ -1,43 +1,123 @@
-# 人格注册表设计 / Persona Registry Design
+# 人格注册表 / Persona Registry
 
 ## 中文优先
 
-Study Senpai 当前将人格行为保存在有版本控制的 Python 模块和提示词模板中。计划中的公开方向是数据驱动的人格注册表：将产品代码与人格配置分离，同时避免把私有聊天、私有提示词或用户专属记忆提交到 git。
+> **状态：已实现**。人格 YAML 注册表已在 v0.1.x 落地，`personas/` 目录是事实来源。
 
-## 目标
+Study Senpai 使用 YAML 文件定义 AI 人格。你可以创建自己的人格，或在社区中分享，无需修改任何核心代码。
 
-- 让人格身份、语气约束、安全边界和记忆策略保持声明式。
-- 支持多个示例人格，而不需要改核心聊天逻辑。
-- 通过把私有人格草稿和本地 seed 数据留在 git 外，让公开仓库可以安全 clone。
-- 在加载人格文件前使用 schema 检查。
+---
 
-## 建议形态
+## 快速使用
 
-未来注册表可以使用 YAML 或 JSON，包含类似这些 section：
+```bash
+# 列出可用人格
+python3 -c "from src.persona.registry import list_available_personas; print(list_available_personas())"
 
-- `identity`：公开名称、角色、locale 和高层风格。
-- `voice`：回复语气、格式偏好和短语级约束。
-- `boundaries`：人格必须避免的话题或行为。
-- `memory_policy`：什么可以被记住、总结或忽略。
-- `examples`：只能使用合成示例，绝不使用真实私密对话。
+# 加载并验证人格
+python3 -c "from src.persona.registry import load_persona; p = load_persona('personas/shen_zhiwei.yaml'); print(p.name)"
+
+# 切换人格（.env）
+PERSONA_FILE=personas/study_buddy.yaml
+```
+
+---
+
+## 内置人格
+
+| 文件 | 人格 | 风格 |
+|------|------|------|
+| `personas/shen_zhiwei.yaml` | 沈知微（默认） | 温柔克制、高三学姐 |
+| `personas/study_buddy.yaml` | 林晓研 | 学术严谨、研究生助手 |
+
+---
+
+## 创建自定义人格
+
+参考 `personas/schema.yaml` 中的字段说明：
+
+```yaml
+# personas/my_persona.yaml
+name: 你的人格名字
+age: 20
+school_role: 大三学长/学姐
+public_title: 一句话描述
+core_identity: |
+  你是谁，基础设定，2-4 句话。
+outward_presence: 对普通人的态度
+user_exception: 对用户（你的例外）的态度
+relationship_position: 在用户关系中的定位
+tone: 说话风格描述
+emotional_method: 处理情绪的方式
+addressing_policy: 如何称呼用户
+action_policy: 动作描写规则
+relationship_goal: 长期关系目标
+memory_goal: 记忆系统目标
+language: 默认语言（如：默认中文，支持切换英文）
+```
+
+验证：
+
+```bash
+python3 -c "
+from src.persona.registry import load_persona
+p = load_persona('personas/my_persona.yaml')
+print('✓ 人格加载成功:', p.name)
+"
+```
+
+---
+
+## YAML 设计规则
+
+- **所有字段必填**，缺少任何字段都会在加载时报错
+- **多行文本**使用 `|` 块标量，保留换行
+- **不要提交**私人角色扮演内容、真实对话截图、私有提示词
+- 测试和 demo 使用**合成示例**，不用真实对话
+
+---
+
+## 人格注册表 API
+
+```python
+from src.persona.registry import (
+    load_persona,          # 从文件路径加载
+    load_default_persona,  # 加载 personas/shen_zhiwei.yaml
+    list_available_personas,  # 扫描目录返回 .yaml 文件列表
+    PersonaLoadError,      # 加载失败时的异常类
+)
+```
+
+---
+
+## 贡献人格
+
+欢迎在 `personas/` 目录提交新人格！参考：[persona_contribution issue template](../.github/ISSUE_TEMPLATE/persona_contribution.md)
+
+提交前检查：
+- `python3 -c "from src.persona.registry import load_persona; load_persona('personas/your_persona.yaml')"`
+- 不包含真实个人信息
+- 行为设计积极正向
+
+---
 
 ## 隐私规则
 
-- 不要提交真实聊天、导出对话、私有提示词、seed 记忆、token 或部署专属配置。
-- 本地专用人格草稿应保存在被忽略的文件里。
-- 测试、文档、demo 和截图都使用合成示例。
-- 人格注册表改动属于产品行为改动，发布前需要 review。
+- 不要提交真实聊天、导出对话、私有提示词、seed 记忆或 token
+- 本地专用人格草稿保存在 `.gitignore` 的文件中
+- 所有示例使用合成数据
+- 人格变更属于产品行为变更，发布前需要 review
 
-## 迁移说明
-
-在注册表 loader 和校验流程实现前，`src/persona/` 下的源码模块和 `src/llm/prompts/` 下的提示词模板仍是事实来源。
+---
 
 ## English fallback
 
-Study Senpai currently keeps persona behavior in versioned Python modules and prompt templates. The planned public direction is a data-driven persona registry that separates product code from persona configuration without storing private chats, private prompts, or user-specific memories in git.
+**Status: Implemented.** The YAML persona registry landed in v0.1.x. `personas/` is the source of truth.
 
-Goals: keep identity, voice constraints, safety boundaries, and memory policy declarative; support multiple example personas without changing core chat logic; keep private drafts and local seed data outside git; validate persona files before loading.
+**Quick start:** Set `PERSONA_FILE=personas/my_persona.yaml` in `.env`. Use `personas/schema.yaml` as a template. Validate with `python3 -c "from src.persona.registry import load_persona; load_persona('personas/my.yaml')"`.
 
-Future YAML/JSON sections may include `identity`, `voice`, `boundaries`, `memory_policy`, and `examples`. Examples must be synthetic only.
+**Built-in personas:** `shen_zhiwei.yaml` (default, warm/gentle senior student) and `study_buddy.yaml` (academic research assistant style).
 
-Do not commit real chats, exported conversations, private prompts, seed memories, tokens, or deployment-specific configuration. Treat persona registry changes as product behavior changes and review them before release.
+**Contribute:** Drop a YAML file in `personas/` and open a PR. No core code changes needed.
+
+**Privacy:** No real chats, private prompts, or user-specific memories in persona files. Use synthetic examples only.
