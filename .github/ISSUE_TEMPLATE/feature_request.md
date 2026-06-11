@@ -1,36 +1,49 @@
 ---
 name: 功能建议 / Feature request
-about: 为 Study Senpai 建议新能力或工作流 / Suggest a capability or workflow
-title: "[Feature 功能]: "
+about: 为 Study Senpai 建议新功能或改进 / Suggest a new feature or improvement
+title: "[Feature]: "
 labels: enhancement
 assignees: ""
 ---
 
-## 问题 / Problem
+## 背景 / Background
 
-这个建议解决什么用户需求或工作流？
+请简短描述你当前遇到的问题或限制。
 
-What user need or workflow does this address?
+Describe the problem or limitation you're experiencing.
 
-## 建议方案 / Proposed solution
+## 期望功能 / Desired feature
 
+简明描述你希望增加的功能。
 
-## 备选方案 / Alternatives considered
+Describe what you'd like to see added.
 
+## 使用场景 / Use case
 
-## 数据与隐私影响 / Data and privacy impact
+这个功能对你（以及其他人）有什么价值？
 
-- 是否会存储新数据？ / Does this store new data?
-- 是否会暴露新的 API surface？ / Does this expose new API surface?
-- 是否影响记忆审核、保留或导出？ / Does this affect memory review, retention, or export?
+What value would this bring to you (and others)?
+
+## 实现思路（可选）/ Implementation ideas (optional)
+
+如果你对实现有想法，请描述一下。
+
+If you have ideas about how to implement this, describe them here.
 
 ## 客户端路径 / Client path
 
-- [ ] Backend
-- [ ] Dashboard
+- [ ] Backend / Python 后端
+- [ ] Dashboard / Web UI
 - [ ] iOS
-- [ ] Discord
+- [ ] Discord Bot
 - [ ] Documentation / 文档
+- [ ] Persona System / 人格系统
+
+## 安全/隐私影响 / Security/privacy impact
+
+这个功能会涉及到用户数据、外部服务或新的权限吗？
+
+Would this feature involve user data, external services, or new permissions?
 
 ## 补充信息 / Additional context
 

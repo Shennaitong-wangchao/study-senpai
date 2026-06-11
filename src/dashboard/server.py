@@ -673,7 +673,19 @@ def build_dashboard_app(
     companion_service: Any | None = None,
     attachment_service: Any | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="Shen Zhiwei Dashboard")
+    app = FastAPI(
+        title="Study Senpai — Dashboard API",
+        description=(
+            "Study Senpai 本地优先 AI 学习陪伴系统的 Dashboard 和 Mobile API。\n\n"
+            "**认证：** Dashboard 端点（`/api/*`）需要 Session Cookie（通过 `/api/login` 获取）。"
+            "Mobile 端点（`/mobile/*`）需要 Bearer Token（`Authorization: Bearer <MOBILE_API_TOKEN>`）。\n\n"
+            "**CSRF：** 所有 POST/PATCH/DELETE `/api/*` 请求需要 `x-csrf-token` 请求头（从登录响应获取）。"
+        ),
+        version="0.1.0",
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json",
+    )
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="dashboard-static")
     presence_service = PresenceStateService(
         settings=settings,
