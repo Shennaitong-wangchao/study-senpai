@@ -102,6 +102,13 @@ Runtime paths:
 - **Mobile API**: `/mobile/*` routes live in the Dashboard app and reuse the same stores and services.
 - **iOS**: `ios/Lover/` is a SwiftUI client for mobile chat, timeline, attachments, settings, and dashboard panels.
 
+v0.2.0 new components:
+
+- **PersonaRegistry** (`src/persona/registry.py`): loads and validates `PersonaProfile` objects from YAML files with strict required-field checks.
+- **StudyService** (`src/product/study.py`): CRUD layer for study goals, flashcards, study sessions, and statistics; shared by `CommandRouter` and Dashboard routes.
+- **CommandRouter** (`src/bot/commands.py`): Discord command dispatcher that parses `!`-prefixed commands, enforces caller identity checks, and delegates to `StudyService`.
+- **SimpleRateLimitMiddleware** (`src/dashboard/server.py`): sliding-window IP rate limiter (120 req / 60 s) applied to write methods and `/api/chat/stream`; returns HTTP 429 with `Retry-After: 60` on breach.
+
 Core flow: a message enters through Discord or `/mobile/chat/stream`, `CompanionService` stores it and builds context, `ReplyService` calls the configured LLM, the assistant message is stored in SQLite, and background jobs extract memories, summaries, facts, relationship state, and observability metrics.
 
 SQLite stores messages, memories, structured facts, relationship states, dashboard audit/security events, background tasks, and product observability. The first open-source phase does not change database schema.
