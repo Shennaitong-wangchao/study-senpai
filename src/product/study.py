@@ -968,3 +968,60 @@ class StudyService:
                 (user_id, limit),
             )
         return [self._session_from_row(r) for r in rows]
+
+    # -----------------------------------------------------------------------
+    # 成就系统
+    # -----------------------------------------------------------------------
+
+    ACHIEVEMENTS: list[dict] = [
+        # Streak 成就
+        {"id": "streak_3",   "name": "初学者",   "desc": "连续学习 3 天",    "icon": "🌱", "type": "streak",   "threshold": 3},
+        {"id": "streak_7",   "name": "一周坚持", "desc": "连续学习 7 天",    "icon": "🔥", "type": "streak",   "threshold": 7},
+        {"id": "streak_14",  "name": "两周习惯", "desc": "连续学习 14 天",   "icon": "⚡", "type": "streak",   "threshold": 14},
+        {"id": "streak_30",  "name": "月度冠军", "desc": "连续学习 30 天",   "icon": "🏆", "type": "streak",   "threshold": 30},
+        {"id": "streak_100", "name": "百日传说", "desc": "连续学习 100 天",  "icon": "👑", "type": "streak",   "threshold": 100},
+        # 卡片成就
+        {"id": "cards_10",   "name": "入门",     "desc": "掌握 10 张卡片",   "icon": "📖", "type": "mastered", "threshold": 10},
+        {"id": "cards_50",   "name": "进步中",   "desc": "掌握 50 张卡片",   "icon": "📚", "type": "mastered", "threshold": 50},
+        {"id": "cards_100",  "name": "百卡达人", "desc": "掌握 100 张卡片",  "icon": "🎓", "type": "mastered", "threshold": 100},
+        {"id": "cards_500",  "name": "知识宝库", "desc": "掌握 500 张卡片",  "icon": "🌟", "type": "mastered", "threshold": 500},
+        # 目标成就
+        {"id": "goals_1",    "name": "定目标",   "desc": "完成第一个学习目标", "icon": "🎯", "type": "completed_goals", "threshold": 1},
+        {"id": "goals_5",    "name": "多线并进", "desc": "完成 5 个学习目标", "icon": "🏅", "type": "completed_goals", "threshold": 5},
+        # 时长成就
+        {"id": "hours_10",   "name": "十小时",   "desc": "累计学习 10 小时", "icon": "⏰", "type": "total_hours", "threshold": 10},
+        {"id": "hours_100",  "name": "百小时",   "desc": "累计学习 100 小时","icon": "🌈", "type": "total_hours", "threshold": 100},
+    ]
+
+    def get_achievements(self, user_id: str) -> list[dict]:
+        """返回用户的成就列表（含是否已解锁）。"""
+        stats = self.get_study_stats(user_id)
+        streak = stats.get("streak_days", 0)
+        mastered = stats.get("mastered_items", 0)
+
+        # 已完成目标数
+        completed_goals_row = self.db.fetchone(
+            "SELECT COUNT(*) AS cnt FROM study_goals WHERE user_id = ? AND status = 'completed'",
+            (user_id,),
+        )
+        completed_goals = int(completed_goals_row["cnt"]) if completed_goals_row else 0
+
+        # 累计学习时长（分钟）
+        hours_row = self.db.fetchone(
+            "SELECT COALESCE(SUM(focus_minutes), 0) AS total FROM study_sessions WHERE user_id = ? AND ended_at IS NOT NULL",
+            (user_id,),
+        )
+        total_hours = (int(hours_row["total"]) if hours_row else 0) / 60
+
+        values = {
+            "streak": streak,
+            "mastered": mastered,
+            "completed_goals": completed_goals,
+            "total_hours": total_hours,
+        }
+        result = []
+        for ach in self.ACHIEVEMENTS:
+            unlocked = values.get(ach["type"], 0) >= ach["threshold"]
+            result.append({**ach, "unlocked": unlocked, "current": values.get(ach["type"], 0)})
+        return result
+

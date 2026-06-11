@@ -146,6 +146,85 @@
   })();
   </script>
   <script>
+  /* ── 全局键盘快捷键 ─────────────────────────────────────────────────────────── */
+  /* g + h → 总览  g + m → 记忆  g + s → 学习  g + c → 聊天                      */
+  /* g + t → 任务  g + p → 性能  / → 聚焦搜索框  Esc → 清空搜索框               */
+  (function () {
+    'use strict';
+    var _lastKey = '';
+    var _lastKeyTime = 0;
+    var SEQ_TIMEOUT = 800; // ms — 序列超时
+
+    var TAB_MAP = {
+      h: 'overview',
+      m: 'memories',
+      s: 'study',
+      c: 'webchat',
+      t: 'tasks',
+      p: 'performance',
+    };
+
+    function isInputFocused() {
+      var el = document.activeElement;
+      if (!el) return false;
+      var tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+    }
+
+    document.addEventListener('keydown', function (e) {
+      // 在表单输入中不触发快捷键（/ 和 Esc 例外处理在下面）
+      var focused = isInputFocused();
+
+      var key = e.key;
+      var now = Date.now();
+
+      // Esc：清空全局搜索框（即使在搜索框内也生效）
+      if (key === 'Escape') {
+        var searchInput = document.getElementById('global-search-input') ||
+                          document.querySelector('input[type="search"]') ||
+                          document.querySelector('input[placeholder*="搜索"]');
+        if (searchInput) {
+          searchInput.value = '';
+          searchInput.blur();
+        }
+        _lastKey = '';
+        return;
+      }
+
+      if (focused) {
+        _lastKey = '';
+        return;
+      }
+
+      // / → 聚焦全局搜索框
+      if (key === '/') {
+        e.preventDefault();
+        var searchEl = document.getElementById('global-search-input') ||
+                       document.querySelector('input[type="search"]') ||
+                       document.querySelector('input[placeholder*="搜索"]');
+        if (searchEl) { searchEl.focus(); searchEl.select(); }
+        _lastKey = '';
+        return;
+      }
+
+      // 检测 g + X 序列
+      if (_lastKey === 'g' && (now - _lastKeyTime) < SEQ_TIMEOUT) {
+        var tab = TAB_MAP[key];
+        if (tab) {
+          e.preventDefault();
+          var btn = document.querySelector('[data-tab="' + tab + '"]');
+          if (btn) { btn.click(); }
+        }
+        _lastKey = '';
+        return;
+      }
+
+      _lastKey = key;
+      _lastKeyTime = now;
+    }, false);
+  })();
+  </script>
+  <script>
   /* ── Study Panel ────────────────────────────────────────────────────────────── */
   (function () {
     'use strict';

@@ -2055,6 +2055,96 @@ class ProductStore:
             "updated_at": row["updated_at"],
         }
 
+    def get_memory_graph(self, user_id: str, limit: int = 50) -> dict:
+        """返回记忆关系图数据（用于可视化），不依赖 LLM，纯本地计算。
+
+        返回格式：
+        {
+            "nodes": [{"id": "mem-uid", "label": "content[:40]", "type": "preference", "importance": 0.8}],
+            "edges": [{"source": "mem-uid-a", "target": "mem-uid-b", "weight": 0.6}]
+        }
+
+        边的计算逻辑：
+        - 两条记忆共享相同 category → weight 0.5
+        - 两条记忆 tags 有交集 → weight 0.6 * (交集数/并集数)（Jaccard 相似度）
+        - 两条记忆 content 有词汇重叠（>2个词）→ weight 0.4
+        只保留 weight >= 0.3 的边，取多条规则中最高权重。
+        """
+        rows = self.db.fetchall(
+            """
+            SELECT memory_uid, memory_type, category, content, tags_json, importance
+            FROM long_term_memories
+            WHERE user_id = ? AND status = 'active'
+            ORDER BY importance DESC, updated_at DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        )
+
+        nodes: list[dict] = []
+        mems: list[dict] = []
+        for row in rows:
+            tags = json_loads(row["tags_json"], [])
+            content = str(row["content"] or "")
+            nodes.append(
+                {
+                    "id": row["memory_uid"],
+                    "label": content[:40],
+                    "type": row["memory_type"],
+                    "importance": float(row["importance"]),
+                }
+            )
+            mems.append(
+                {
+                    "uid": row["memory_uid"],
+                    "category": str(row["category"] or ""),
+                    "tags": set(str(t) for t in tags if t),
+                    # 分词：小写、去除短词（长度<=2）
+                    "words": set(
+                        w for w in content.lower().split()
+                        if len(w) > 2
+                    ),
+                }
+            )
+
+        edges: list[dict] = []
+        n = len(mems)
+        for i in range(n):
+            for j in range(i + 1, n):
+                a = mems[i]
+                b = mems[j]
+                best_weight = 0.0
+
+                # 规则一：相同 category
+                if a["category"] and b["category"] and a["category"] == b["category"]:
+                    best_weight = max(best_weight, 0.5)
+
+                # 规则二：tags Jaccard 相似度
+                if a["tags"] and b["tags"]:
+                    intersection = len(a["tags"] & b["tags"])
+                    if intersection > 0:
+                        union = len(a["tags"] | b["tags"])
+                        jaccard = intersection / union if union > 0 else 0.0
+                        tag_weight = round(0.6 * jaccard, 4)
+                        best_weight = max(best_weight, tag_weight)
+
+                # 规则三：content 词汇重叠（>2 个公共词）
+                if a["words"] and b["words"]:
+                    common_words = len(a["words"] & b["words"])
+                    if common_words > 2:
+                        best_weight = max(best_weight, 0.4)
+
+                if best_weight >= 0.3:
+                    edges.append(
+                        {
+                            "source": a["uid"],
+                            "target": b["uid"],
+                            "weight": round(best_weight, 4),
+                        }
+                    )
+
+        return {"nodes": nodes, "edges": edges}
+
     def list_long_term_memories(self, *, user_id: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
         params: list[Any] = []
         query = "SELECT * FROM long_term_memories WHERE status = 'active'"

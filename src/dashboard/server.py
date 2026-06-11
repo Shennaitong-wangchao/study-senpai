@@ -2048,6 +2048,22 @@ def build_dashboard_app(
             },
         )
 
+    @app.get(
+        "/api/memories/graph",
+        summary="记忆关系图",
+        description="返回最重要的 N 条长期记忆的节点和边，用于可视化记忆关系网络。纯本地计算，不调用 LLM。",
+    )
+    async def memories_graph(
+        limit: int = Query(50, ge=1, le=200),
+    ) -> JSONResponse:
+        scope = current_scope_snapshot()
+        if scope is None:
+            return JSONResponse({"nodes": [], "edges": [], "user_id": None})
+        graph = product_store.get_memory_graph(scope["user_id"], limit=limit)
+        graph["user_id"] = scope["user_id"]
+        graph["refreshed_at"] = iso_utc_now()
+        return JSONResponse(graph)
+
     @app.post("/api/memories/{memory_uid}/archive", response_model=ActionResponse)
     async def archive_memory(request: Request, memory_uid: str) -> ActionResponse:
         memory = product_store.get_long_term_memory(memory_uid)
@@ -3712,6 +3728,21 @@ def build_dashboard_app(
         summary = study_service.generate_daily_summary(scope["user_id"])
         text = study_service.get_review_summary_text(scope["user_id"])
         return {"summary": summary, "text": text, "refreshed_at": iso_utc_now()}
+
+    @app.get("/api/study/achievements")
+    async def study_achievements() -> dict:
+        """返回用户的成就列表（含是否已解锁）。"""
+        scope = current_scope_snapshot()
+        if scope is None:
+            return {"achievements": [], "refreshed_at": iso_utc_now()}
+        achievements = study_service.get_achievements(scope["user_id"])
+        unlocked_count = sum(1 for a in achievements if a.get("unlocked"))
+        return {
+            "achievements": achievements,
+            "unlocked_count": unlocked_count,
+            "total_count": len(achievements),
+            "refreshed_at": iso_utc_now(),
+        }
 
     class WebChatRequest(BaseModel):
         content: str = ""
