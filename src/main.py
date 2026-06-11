@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 
 import uvicorn
@@ -26,6 +27,7 @@ from src.memory.store import MemoryStore
 from src.memory.summarizer import ConversationSummarizer
 from src.memory.writer import MemoryWriter
 from src.persona.profile import SHEN_ZHIWEI_PROFILE
+from src.persona.registry import PersonaLoadError, load_default_persona, load_persona
 from src.product.attachments import AttachmentService
 from src.product.health import HealthCheckService
 from src.product.metrics import ExperienceMetricsService
@@ -85,6 +87,25 @@ async def run() -> None:
             "Nothing to run: enable at least one of RUN_DISCORD_BOT, RUN_BACKGROUND_WORKER, or DASHBOARD_ENABLED"
         )
 
+    # 加载人格配置：优先读取环境变量 PERSONA_FILE 指定的 YAML 文件，
+    # 其次尝试加载默认的 personas/shen_zhiwei.yaml，
+    # 最后回退到 Python 内联定义（保证兼容性）
+    persona_file_env = os.environ.get("PERSONA_FILE", "").strip()
+    if persona_file_env:
+        try:
+            active_persona = load_persona(persona_file_env)
+            logger.info("已从环境变量 PERSONA_FILE 加载人格：%s（文件：%s）", active_persona.name, persona_file_env)
+        except PersonaLoadError as exc:
+            logger.warning("无法从 PERSONA_FILE='%s' 加载人格，回退到 Python 内联定义。原因：%s", persona_file_env, exc)
+            active_persona = SHEN_ZHIWEI_PROFILE
+    else:
+        try:
+            active_persona = load_default_persona()
+            logger.info("已加载默认 YAML 人格：%s", active_persona.name)
+        except PersonaLoadError as exc:
+            logger.warning("无法加载默认 YAML 人格，回退到 Python 内联定义。原因：%s", exc)
+            active_persona = SHEN_ZHIWEI_PROFILE
+
     database = Database(settings.database_path)
     database.initialize()
 
@@ -112,7 +133,7 @@ async def run() -> None:
         summary_trigger_message_count=settings.summary_trigger_message_count,
     )
     memory_service = MemoryService(pipeline)
-    prompt_builder = PromptBuilder(SHEN_ZHIWEI_PROFILE)
+    prompt_builder = PromptBuilder(active_persona)
     reply_service = ReplyService(
         settings=settings,
         memory_service=memory_service,

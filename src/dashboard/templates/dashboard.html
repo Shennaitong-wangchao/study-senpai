@@ -80,6 +80,7 @@
       <button type="button" class="tab-button" data-tab="security">安全控制</button>
       <button type="button" class="tab-button" data-tab="audits">审计日志</button>
       <button type="button" class="tab-button" data-tab="logs">运行日志</button>
+      <button type="button" class="tab-button" data-tab="webchat">💬 聊天</button>
     </nav>
 
     <main id="panel-host" class="panel-host"></main>
@@ -108,5 +109,143 @@
   </dialog>
 
   <script src="/static/dashboard.js"></script>
+  <script>
+  /* ── Web Chat Panel ───────────────────────────────────────────────────────── */
+  (function () {
+    'use strict';
+
+    const CHAT_PANEL_HTML = `
+      <div id="webchat-panel" class="panel-section" style="max-width:800px;margin:0 auto;display:flex;flex-direction:column;height:calc(100vh - 220px)">
+        <div class="panel-header">
+          <h2 class="panel-title">💬 Web 聊天</h2>
+          <p class="panel-subtitle">在浏览器中直接与陪伴 AI 对话，无需 Discord 或 iOS App。</p>
+        </div>
+        <div id="chat-messages" style="flex:1;overflow-y:auto;border:1px solid var(--border,#e5e7eb);border-radius:8px;padding:16px;background:var(--surface,#fff);margin-bottom:12px;display:flex;flex-direction:column;gap:12px"></div>
+        <div style="display:flex;gap:8px">
+          <textarea id="chat-input" rows="2" placeholder="输入消息，按 Ctrl+Enter 发送…"
+            style="flex:1;resize:vertical;padding:10px 12px;border:1px solid var(--border,#e5e7eb);border-radius:8px;font-size:14px;line-height:1.5;font-family:inherit"></textarea>
+          <button id="chat-send-btn" class="primary" style="align-self:flex-end;padding:10px 20px">发送</button>
+        </div>
+        <div id="chat-status" style="font-size:12px;color:var(--text-muted,#6b7280);margin-top:6px;min-height:18px"></div>
+      </div>`;
+
+    function getCsrfToken() {
+      try {
+        const bootstrap = JSON.parse(document.getElementById('dashboard-bootstrap').textContent);
+        return bootstrap.csrf_token || '';
+      } catch { return ''; }
+    }
+
+    function appendMessage(role, text) {
+      const el = document.getElementById('chat-messages');
+      if (!el) return;
+      const isUser = role === 'user';
+      const bubble = document.createElement('div');
+      bubble.style.cssText = [
+        'max-width:72%;padding:10px 14px;border-radius:12px;line-height:1.6;font-size:14px;white-space:pre-wrap',
+        isUser ? 'align-self:flex-end;background:var(--accent,#6366f1);color:#fff;border-bottom-right-radius:3px'
+               : 'align-self:flex-start;background:var(--surface-2,#f3f4f6);color:var(--text,#111);border-bottom-left-radius:3px',
+      ].join(';');
+      bubble.textContent = text;
+      el.appendChild(bubble);
+      el.scrollTop = el.scrollHeight;
+      return bubble;
+    }
+
+    function setStatus(msg) {
+      const el = document.getElementById('chat-status');
+      if (el) el.textContent = msg;
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('chat-input');
+      const btn = document.getElementById('chat-send-btn');
+      const content = (input.value || '').trim();
+      if (!content) return;
+
+      appendMessage('user', content);
+      input.value = '';
+      btn.disabled = true;
+      setStatus('AI 正在输入…');
+
+      const assistantBubble = appendMessage('assistant', '');
+      let buffer = '';
+
+      try {
+        const resp = await fetch('/api/chat/stream', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-csrf-token': getCsrfToken(),
+          },
+          body: JSON.stringify({ content, display_name: '用户' }),
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+          assistantBubble.textContent = `错误: ${err.detail || resp.statusText}`;
+          setStatus('');
+          return;
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let lineBuffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          lineBuffer += decoder.decode(value, { stream: true });
+          const lines = lineBuffer.split('\n');
+          lineBuffer = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data:')) continue;
+            try {
+              const event = JSON.parse(line.slice(5).trim());
+              if (event.type === 'token' || event.type === 'delta') {
+                buffer += (event.text || event.delta || '');
+                assistantBubble.textContent = buffer;
+                document.getElementById('chat-messages').scrollTop = 999999;
+              } else if (event.type === 'done' || event.type === 'end') {
+                break;
+              } else if (event.type === 'error') {
+                assistantBubble.textContent = `错误: ${event.text}`;
+              }
+            } catch { /* 忽略非 JSON 行 */ }
+          }
+        }
+      } catch (e) {
+        assistantBubble.textContent = `请求失败: ${e.message}`;
+      } finally {
+        btn.disabled = false;
+        setStatus('');
+      }
+    }
+
+    function initChatPanel() {
+      const host = document.getElementById('panel-host');
+      if (!host) return;
+
+      const tabBtn = document.querySelector('[data-tab="webchat"]');
+      if (!tabBtn) return;
+
+      tabBtn.addEventListener('click', () => {
+        if (document.getElementById('webchat-panel')) return;
+        host.innerHTML = CHAT_PANEL_HTML;
+
+        document.getElementById('chat-send-btn').addEventListener('click', sendMessage);
+        document.getElementById('chat-input').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); sendMessage(); }
+        });
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initChatPanel);
+    } else {
+      initChatPanel();
+    }
+  })();
+  </script>
 </body>
 </html>

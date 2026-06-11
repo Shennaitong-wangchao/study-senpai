@@ -8,26 +8,38 @@ on:
       - master
 
 jobs:
-  python-contracts:
-    name: Python contracts
+  # ── 代码质量和测试 ────────────────────────────────────────────────────────────
+  python-checks:
+    name: Python checks (3.11)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
 
     steps:
-      - name: Check out repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: Install dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install ruff
+
+      - name: Lint with ruff
+        run: |
+          ruff check src/ tests/ scripts/ --select E,W,F,I --ignore E501,W503
+        continue-on-error: true
 
       - name: Run unit tests
-        run: python -m pytest
+        run: python -m pytest --tb=short -q
 
       - name: Run release gate
         run: python scripts/release_gate.py
@@ -40,3 +52,44 @@ jobs:
 
       - name: Run product verification
         run: python scripts/verify_product.py
+
+  # ── 密钥扫描 ─────────────────────────────────────────────────────────────────
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run TruffleHog (OSS)
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+        continue-on-error: true
+
+  # ── Docker 构建验证 ───────────────────────────────────────────────────────────
+  docker-build:
+    name: Docker build check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: study-senpai:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

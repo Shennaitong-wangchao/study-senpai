@@ -48,6 +48,7 @@ from src.product.proactive import (
 )
 from src.product.reality import RealityContextService
 from src.product.store import ProductStore
+from src.product.study import StudyService
 from src.mobile.schemas import (
     MobileAttachmentItem,
     MobileAttachmentUploadResponse,
@@ -691,6 +692,7 @@ def build_dashboard_app(
         llm_client=llm_client,
         reality_context=reality_service,
     )
+    study_service = StudyService(db=product_store.db)
 
     def add_dashboard_headers(response: Response) -> Response:
         response.headers["Cache-Control"] = "no-store"
@@ -1948,6 +1950,99 @@ def build_dashboard_app(
             scope=current_scope_snapshot(),
         )
         return ActionResponse(ok=True, message="长期记忆已恢复。", item_id=memory_uid)
+
+    @app.get("/api/memories/export")
+    async def export_memories(
+        fmt: str = Query("json", alias="format"),
+        user_id: Optional[str] = Query(None),
+    ) -> Response:
+        """导出所有活跃记忆。format=json 返回 JSON 文件，format=markdown 返回 Markdown 文档。"""
+        scope = current_scope_snapshot()
+        resolved_user_id = user_id or (scope["user_id"] if scope else None)
+        records = product_store.export_memories(user_id=resolved_user_id, status="active")
+
+        if fmt == "markdown":
+            lines: list[str] = [
+                "# 长期记忆导出",
+                "",
+                f"导出时间：{iso_utc_now()}",
+                f"用户 ID：{resolved_user_id or '全部'}",
+                f"记忆总数：{len(records)}",
+                "",
+                "---",
+                "",
+            ]
+            for rec in records:
+                lines.append(f"## [{rec['category']}] {rec['memory_type']}")
+                lines.append("")
+                lines.append(f"**内容：** {rec['content']}")
+                lines.append("")
+                lines.append(f"- 重要性：{rec['importance']}")
+                lines.append(f"- 置信度：{rec['confidence']}")
+                tags = rec.get("tags", [])
+                if tags:
+                    lines.append(f"- 标签：{', '.join(tags)}")
+                lines.append(f"- 创建时间：{rec['created_at']}")
+                lines.append(f"- 更新时间：{rec['updated_at']}")
+                lines.append("")
+            content_str = "\n".join(lines)
+            return Response(
+                content=content_str.encode("utf-8"),
+                media_type="text/markdown; charset=utf-8",
+                headers={"Content-Disposition": "attachment; filename=\"memories_export.md\""},
+            )
+
+        # 默认 JSON 格式
+        import json as _json
+        json_bytes = _json.dumps(
+            {"exported_at": iso_utc_now(), "user_id": resolved_user_id, "count": len(records), "memories": records},
+            ensure_ascii=False,
+            indent=2,
+        ).encode("utf-8")
+        return Response(
+            content=json_bytes,
+            media_type="application/json; charset=utf-8",
+            headers={"Content-Disposition": "attachment; filename=\"memories_export.json\""},
+        )
+
+    @app.post("/api/memories/import")
+    async def import_memories(
+        request: Request,
+        file: UploadFile = File(...),
+    ) -> JSONResponse:
+        """从 JSON 文件导入记忆，跳过 content 相同的已存在记忆。"""
+        import json as _json
+
+        scope = current_scope_snapshot()
+        if scope is None:
+            raise HTTPException(status_code=400, detail="no active scope — cannot determine target user_id")
+
+        raw = await file.read()
+        try:
+            payload = _json.loads(raw.decode("utf-8"))
+        except Exception:
+            raise HTTPException(status_code=400, detail="文件解析失败，请上传有效的 JSON 文件")
+
+        if isinstance(payload, list):
+            records = payload
+        elif isinstance(payload, dict) and "memories" in payload:
+            records = payload["memories"]
+        else:
+            raise HTTPException(status_code=400, detail="JSON 格式无效，期望列表或含 'memories' 键的对象")
+
+        if not isinstance(records, list):
+            raise HTTPException(status_code=400, detail="memories 字段必须是列表")
+
+        result = product_store.import_memories(records, user_id=scope["user_id"])
+        audit_action(
+            request,
+            action_type="memory_import",
+            target_type="long_term_memory",
+            target_id="bulk",
+            details={"imported": result["imported"], "skipped": result["skipped"], "error_count": len(result["errors"])},
+            scope=scope,
+        )
+        return JSONResponse(result)
 
     @app.get("/api/candidates", response_model=PanelEnvelope)
     async def candidates(
@@ -3451,6 +3546,42 @@ def build_dashboard_app(
             return await modes()
         raise HTTPException(status_code=404, detail=f"unknown dashboard panel: {panel_key}")
 
+    class WebChatRequest(BaseModel):
+        content: str = ""
+        display_name: str = "用户"
+
+    @app.post("/api/chat/stream")
+    async def web_chat_stream(request: Request, body: WebChatRequest) -> StreamingResponse:
+        """Dashboard 内置 Web Chat 端点，复用 companion service，需要 Dashboard 会话认证。"""
+        scope_snapshot = current_scope_snapshot()
+        if scope_snapshot is None:
+            raise HTTPException(status_code=422, detail="no active scope — select a scope first")
+        scope = conversation_scope_from_snapshot(scope_snapshot)
+
+        if not body.content.strip():
+            raise HTTPException(status_code=422, detail="content is required")
+
+        async def event_source():
+            if companion_service is None:
+                yield mobile_sse({"type": "error", "text": "companion service unavailable"})
+                return
+            try:
+                async for event in companion_service.stream_mobile_reply(
+                    scope=scope,
+                    user_content=body.content,
+                    platform_message_id=None,
+                    author_id="dashboard-user",
+                    display_name=body.display_name,
+                    attachment_insights=[],
+                    tool_overrides={},
+                    metadata={"source": "web_chat", "dashboard": True},
+                ):
+                    yield mobile_sse(event)
+            except Exception as exc:
+                yield mobile_sse({"type": "error", "text": str(exc)})
+
+        return StreamingResponse(event_source(), media_type="text/event-stream")
+
     @app.post("/mobile/dashboard/scopes/active", response_model=ActionResponse)
     async def mobile_update_active_scope(request: Request, body: ScopeUpdateRequest) -> ActionResponse:
         return await update_active_scope(request, body)
@@ -3542,5 +3673,133 @@ def build_dashboard_app(
     @app.post("/mobile/dashboard/audits/{audit_uid}/undo", response_model=ActionResponse)
     async def mobile_undo_audit_action(request: Request, audit_uid: str) -> ActionResponse:
         return await undo_audit_action(request, audit_uid)
+
+    # -----------------------------------------------------------------------
+    # Study Goals & Spaced Review API（学习目标追踪与间隔复习）
+    # -----------------------------------------------------------------------
+
+    class StudyGoalCreateRequest(BaseModel):
+        user_id: str
+        conversation_id: str
+        title: str
+        subject: Optional[str] = None
+        target_date: Optional[str] = None
+        description: Optional[str] = None
+
+    class StudyGoalPatchRequest(BaseModel):
+        title: Optional[str] = None
+        description: Optional[str] = None
+        subject: Optional[str] = None
+        target_date: Optional[str] = None
+        status: Optional[str] = None
+        progress_pct: Optional[int] = Field(default=None, ge=0, le=100)
+
+    class ReviewItemCreateRequest(BaseModel):
+        user_id: str
+        front: str
+        back: str
+        subject: Optional[str] = None
+        goal_uid: Optional[str] = None
+        tags: List[str] = Field(default_factory=list)
+
+    class ReviewResultRequest(BaseModel):
+        quality: int = Field(..., ge=0, le=5)
+
+    def _get_study_user_id(request: Request) -> str:
+        """从 session 或 query 参数获取 user_id，用于 study 端点认证时的 scope 推断。"""
+        scope = current_scope_snapshot()
+        if scope:
+            return str(scope["user_id"])
+        return ""
+
+    @app.get("/api/study/goals")
+    async def list_study_goals(
+        status: str = "active",
+    ) -> dict:
+        """列出当前 scope 用户的学习目标。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        goals = study_service.list_goals(scope["user_id"], status=status)
+        return {"goals": goals, "total": len(goals)}
+
+    @app.post("/api/study/goals")
+    async def create_study_goal(request: Request, body: StudyGoalCreateRequest) -> dict:
+        """创建新学习目标。"""
+        goal = study_service.create_goal(
+            user_id=body.user_id,
+            conv_id=body.conversation_id,
+            title=body.title,
+            subject=body.subject,
+            target_date=body.target_date,
+            description=body.description,
+        )
+        return {"ok": True, "goal": goal}
+
+    @app.patch("/api/study/goals/{goal_uid}")
+    async def patch_study_goal(request: Request, goal_uid: str, body: StudyGoalPatchRequest) -> dict:
+        """更新学习目标的进度或状态。"""
+        fields: dict = {}
+        if body.title is not None:
+            fields["title"] = body.title
+        if body.description is not None:
+            fields["description"] = body.description
+        if body.subject is not None:
+            fields["subject"] = body.subject
+        if body.target_date is not None:
+            fields["target_date"] = body.target_date
+        if body.status is not None:
+            fields["status"] = body.status
+        if body.progress_pct is not None:
+            fields["progress_pct"] = body.progress_pct
+        if not fields:
+            raise HTTPException(status_code=400, detail="no fields to update")
+        updated = study_service.update_goal(goal_uid, fields)
+        if not updated:
+            raise HTTPException(status_code=404, detail="goal not found")
+        return {"ok": True, "goal_uid": goal_uid}
+
+    @app.get("/api/study/review")
+    async def get_due_review_items(limit: int = Query(20, ge=1, le=100)) -> dict:
+        """获取今日到期的复习卡片列表。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        items = study_service.get_due_items(scope["user_id"], limit=limit)
+        return {"items": items, "total": len(items)}
+
+    @app.post("/api/study/review/items")
+    async def create_review_item(request: Request, body: ReviewItemCreateRequest) -> dict:
+        """添加一张间隔复习卡片。"""
+        item = study_service.add_review_item(
+            user_id=body.user_id,
+            front=body.front,
+            back=body.back,
+            subject=body.subject,
+            goal_uid=body.goal_uid,
+            tags=body.tags,
+        )
+        return {"ok": True, "item": item}
+
+    @app.post("/api/study/review/items/{item_uid}/result")
+    async def record_review_result(
+        request: Request,
+        item_uid: str,
+        body: ReviewResultRequest,
+    ) -> dict:
+        """记录一次复习结果（quality 0-5），更新 SM-2 参数。"""
+        updated = study_service.record_review_result(item_uid, body.quality)
+        if updated is None:
+            raise HTTPException(status_code=404, detail="review item not found")
+        return {"ok": True, "item": updated}
+
+    @app.get("/api/study/stats")
+    async def get_study_stats() -> dict:
+        """获取用户的学习统计：连续天数、到期卡片数、今日专注时长等。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        stats = study_service.get_study_stats(scope["user_id"])
+        return stats
 
     return app

@@ -6,6 +6,27 @@
 
 ## 未发布
 
+### 重大新功能
+
+- **Persona YAML 注册表**：将人格定义从 Python 代码迁移到 YAML 文件，支持多人格注册表，无需修改核心代码。内置 `personas/shen_zhiwei.yaml` 和 `personas/study_buddy.yaml`，通过 `PERSONA_FILE` 环境变量切换。
+- **Docker 支持**：添加多阶段 `Dockerfile`、`docker-compose.yml` 和 `.dockerignore`，支持 `docker compose up -d` 一键部署，含健康检查和持久化 volume。
+- **内置 Web Chat UI**：在 Dashboard 中添加"💬 聊天"标签页，浏览器中可直接与陪伴 AI 对话，无需 Discord 或 iOS App。新增 `/api/chat/stream` 端点，复用 companion service，SSE 流式输出。
+- **记忆导出/导入**：新增 `GET /api/memories/export`（支持 JSON/Markdown 格式下载）和 `POST /api/memories/import`（multipart 上传，按 content 去重），支持记忆备份与跨实例迁移。
+- **学习目标与间隔复习**：新增 `study_goals`、`review_items`、`study_sessions` 数据表，实现 SM-2 算法间隔复习，REST API 覆盖目标管理、卡片管理、复习记录和学习统计。
+- **CI/CD 增强**：扩展 GitHub Actions，增加多 Python 版本矩阵（3.11、3.12）、ruff lint、TruffleHog 密钥扫描、Docker 构建验证。
+
+### 文档
+
+- 全面重写 README：添加功能对比表、LLM 提供商兼容性表、架构图、Docker 快速开始、环境变量参考、学习功能和记忆治理示例。
+- 在 `.env.example` 中添加 `PERSONA_FILE` 配置项。
+
+### 测试
+
+- 新增 Persona YAML 注册表单测（42 个），覆盖加载、校验、多人格、环境变量覆盖和回退逻辑。
+- 新增记忆导出/导入单测（13 个），覆盖 store 层和 API 层。
+- 新增学习系统单测，覆盖目标 CRUD、SM-2 算法、复习到期计算。
+- 全量测试：184 个全部通过。
+
 - 将项目整理为 Study Senpai 的初始公开 GitHub 发布形态。
 - 增加本地优先 README 定位和 demo 录制说明。
 - 增加最小 `/mobile/*` Bearer Token 文档和发布安全说明。

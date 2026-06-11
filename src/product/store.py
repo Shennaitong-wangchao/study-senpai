@@ -2088,6 +2088,128 @@ class ProductStore:
             )
         return result
 
+    def export_memories(
+        self,
+        user_id: str | None = None,
+        status: str = "active",
+    ) -> list[dict[str, Any]]:
+        """导出记忆为字典列表，格式与 list_long_term_memories 兼容。"""
+        params: list[Any] = []
+        query = "SELECT * FROM long_term_memories WHERE status = ?"
+        params.append(status)
+        if user_id:
+            query += " AND user_id = ?"
+            params.append(user_id)
+        query += " ORDER BY importance DESC, updated_at DESC"
+        rows = self.db.fetchall(query, params)
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            result.append(
+                {
+                    "memory_uid": row["memory_uid"],
+                    "user_id": row["user_id"],
+                    "conversation_id": row["conversation_id"],
+                    "channel_id": row["channel_id"],
+                    "guild_id": row["guild_id"],
+                    "memory_type": row["memory_type"],
+                    "category": row["category"],
+                    "content": row["content"],
+                    "tags": json_loads(row["tags_json"], []),
+                    "source_message_ids": json_loads(row["source_message_ids_json"], []),
+                    "confidence": float(row["confidence"]),
+                    "importance": float(row["importance"]),
+                    "status": row["status"],
+                    "last_used_at": row["last_used_at"],
+                    "supersedes_memory_uid": row["supersedes_memory_uid"],
+                    "metadata": json_loads(row["metadata_json"], {}),
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                }
+            )
+        return result
+
+    def import_memories(
+        self,
+        records: list[dict[str, Any]],
+        user_id: str,
+    ) -> dict[str, Any]:
+        """从记录列表导入记忆，通过 content+user_id 去重，跳过已存在的条目。
+
+        返回 {imported: N, skipped: M, errors: [...]}
+        """
+        imported = 0
+        skipped = 0
+        errors: list[str] = []
+
+        for idx, record in enumerate(records):
+            try:
+                content = str(record.get("content", "")).strip()
+                if not content:
+                    errors.append(f"记录 #{idx}: content 字段为空")
+                    continue
+
+                memory_type = str(record.get("memory_type", "imported")).strip() or "imported"
+                category = str(record.get("category", "general")).strip() or "general"
+
+                existing = self.db.fetchone(
+                    """
+                    SELECT id FROM long_term_memories
+                    WHERE user_id = ? AND content = ? AND status = 'active'
+                    LIMIT 1
+                    """,
+                    (user_id, content),
+                )
+                if existing:
+                    skipped += 1
+                    continue
+
+                now = iso_utc_now()
+                memory_uid = f"mem_{uuid.uuid4().hex}"
+                tags = record.get("tags", [])
+                if not isinstance(tags, list):
+                    tags = []
+                source_message_ids = record.get("source_message_ids", [])
+                if not isinstance(source_message_ids, list):
+                    source_message_ids = []
+                confidence = float(record.get("confidence", 0.8))
+                importance = float(record.get("importance", 0.5))
+                metadata = record.get("metadata", {})
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                metadata["imported"] = True
+
+                self.db.execute(
+                    """
+                    INSERT INTO long_term_memories (
+                        memory_uid, user_id, conversation_id, channel_id, guild_id, memory_type, category,
+                        content, tags_json, source_message_ids_json, confidence, importance, status,
+                        last_used_at, supersedes_memory_uid, metadata_json, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, NULL, ?, ?, ?)
+                    """,
+                    (
+                        memory_uid,
+                        user_id,
+                        record.get("conversation_id") or "",
+                        record.get("channel_id"),
+                        record.get("guild_id"),
+                        memory_type,
+                        category,
+                        content,
+                        json_dumps(tags),
+                        json_dumps(source_message_ids),
+                        confidence,
+                        importance,
+                        json_dumps(metadata),
+                        now,
+                        now,
+                    ),
+                )
+                imported += 1
+            except Exception as exc:
+                errors.append(f"记录 #{idx}: {exc}")
+
+        return {"imported": imported, "skipped": skipped, "errors": errors}
+
     def get_overview(self, *, user_id: str | None = None) -> dict[str, Any]:
         where_user = " WHERE user_id = ?" if user_id else ""
         params = (user_id,) if user_id else ()

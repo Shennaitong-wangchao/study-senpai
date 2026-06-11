@@ -256,9 +256,76 @@ def _migration_20260426_reality_context(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_20260611_study_system(connection: sqlite3.Connection) -> None:
+    """学习目标追踪和间隔复习系统迁移（幂等）。"""
+    _execute_statements(
+        connection,
+        [
+            """
+            CREATE TABLE IF NOT EXISTS study_goals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                goal_uid TEXT NOT NULL UNIQUE,
+                user_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                subject TEXT,
+                target_date TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                progress_pct INTEGER NOT NULL DEFAULT 0,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_study_goals_user ON study_goals(user_id, status, created_at DESC)",
+            """
+            CREATE TABLE IF NOT EXISTS review_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_uid TEXT NOT NULL UNIQUE,
+                user_id TEXT NOT NULL,
+                goal_uid TEXT,
+                front TEXT NOT NULL,
+                back TEXT NOT NULL,
+                subject TEXT,
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                ease_factor REAL NOT NULL DEFAULT 2.5,
+                interval_days INTEGER NOT NULL DEFAULT 1,
+                repetitions INTEGER NOT NULL DEFAULT 0,
+                next_review_at TEXT,
+                last_reviewed_at TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_review_items_user ON review_items(user_id, status, next_review_at ASC)",
+            "CREATE INDEX IF NOT EXISTS idx_review_items_goal ON review_items(goal_uid, status)",
+            """
+            CREATE TABLE IF NOT EXISTS study_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_uid TEXT NOT NULL UNIQUE,
+                user_id TEXT NOT NULL,
+                goal_uid TEXT,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                focus_minutes INTEGER NOT NULL DEFAULT 0,
+                items_reviewed INTEGER NOT NULL DEFAULT 0,
+                notes TEXT,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_study_sessions_user ON study_sessions(user_id, started_at DESC)",
+        ],
+    )
+
+
 MIGRATIONS: list[Migration] = [
     Migration(name="20260416_dashboard_p1", apply=_migration_20260416_dashboard_p1),
     Migration(name="20260425_message_idempotency", apply=_migration_20260425_message_idempotency),
     Migration(name="20260426_companion_day_engine", apply=_migration_20260426_companion_day_engine),
     Migration(name="20260426_reality_context", apply=_migration_20260426_reality_context),
+    Migration(name="20260611_study_system", apply=_migration_20260611_study_system),
 ]
