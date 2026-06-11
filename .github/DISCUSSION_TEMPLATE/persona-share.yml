@@ -1,0 +1,33 @@
+---
+title: 分享你的人格 / Share your persona
+labels: ["persona", "community"]
+---
+
+## 人格介绍 / Persona description
+
+简短描述你的人格特点。
+
+Brief description of your persona's characteristics.
+
+## YAML 预览
+
+```yaml
+name:
+age:
+school_role:
+public_title:
+core_identity: |
+
+tone:
+language:
+```
+
+## 适用场景
+
+这个人格最适合谁用？
+
+## 验证方式
+
+```bash
+python3 -c "from src.persona.registry import load_persona; p = load_persona('personas/your_persona.yaml'); print('OK:', p.name)"
+```
