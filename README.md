@@ -102,6 +102,8 @@ python3 -m src.main
 open http://127.0.0.1:8099
 ```
 
+> 想快速看到完整的 Demo 效果（含学习数据）？用 `make seed-demo` 生成演示数据库，详见 [DEMO.md](DEMO.md)。
+
 ### 方式二：Docker（推荐生产部署）
 
 ```bash
