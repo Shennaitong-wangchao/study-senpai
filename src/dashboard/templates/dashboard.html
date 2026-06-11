@@ -80,6 +80,7 @@
       <button type="button" class="tab-button" data-tab="security">安全控制</button>
       <button type="button" class="tab-button" data-tab="audits">审计日志</button>
       <button type="button" class="tab-button" data-tab="logs">运行日志</button>
+      <button type="button" class="tab-button" data-tab="study">📚 学习</button>
       <button type="button" class="tab-button" data-tab="webchat">💬 聊天</button>
     </nav>
 
@@ -110,9 +111,299 @@
 
   <script src="/static/dashboard.js"></script>
   <script>
+  /* ── Study Panel ────────────────────────────────────────────────────────────── */
+  (function () {
+    'use strict';
+
+    function getCsrfToken() {
+      try { return JSON.parse(document.getElementById('dashboard-bootstrap').textContent).csrf_token || ''; }
+      catch { return ''; }
+    }
+
+    function studyPanelHTML() {
+      return `
+        <div id="study-panel" class="panel-section" style="max-width:900px;margin:0 auto">
+          <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <h2 class="panel-title">📚 学习中心</h2>
+              <p class="panel-subtitle" style="margin:0">学习目标管理 · SM-2 间隔复习 · 学习统计</p>
+            </div>
+            <button id="study-refresh-btn" class="ghost" type="button">刷新</button>
+          </div>
+
+          <div id="study-stats-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0"></div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <h3 style="margin:0;font-size:15px">📋 学习目标</h3>
+                <button id="study-add-goal-btn" class="primary" style="padding:4px 12px;font-size:13px" type="button">+ 添加目标</button>
+              </div>
+              <div id="study-goals-list" style="display:flex;flex-direction:column;gap:8px"></div>
+            </div>
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <h3 style="margin:0;font-size:15px">🃏 今日复习 (<span id="due-count">-</span>)</h3>
+                <button id="study-add-card-btn" class="ghost" style="padding:4px 12px;font-size:13px" type="button">+ 添加卡片</button>
+              </div>
+              <div id="study-review-area" style="display:flex;flex-direction:column;gap:8px"></div>
+            </div>
+          </div>
+
+          <div id="study-add-goal-form" style="display:none;background:var(--surface-2,#f3f4f6);padding:16px;border-radius:8px;margin-top:16px">
+            <h4 style="margin:0 0 12px">新建学习目标</h4>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <input id="goal-title-input" placeholder="目标标题（如：高考数学备考）" style="padding:8px 12px;border:1px solid var(--border,#e5e7eb);border-radius:6px;font-size:14px">
+              <input id="goal-subject-input" placeholder="学科/领域（如：数学、编程、英语）" style="padding:8px 12px;border:1px solid var(--border,#e5e7eb);border-radius:6px;font-size:14px">
+              <input id="goal-date-input" type="date" style="padding:8px 12px;border:1px solid var(--border,#e5e7eb);border-radius:6px;font-size:14px">
+              <div style="display:flex;gap:8px">
+                <button id="goal-save-btn" class="primary" type="button">保存</button>
+                <button id="goal-cancel-btn" class="ghost" type="button">取消</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="study-add-card-form" style="display:none;background:var(--surface-2,#f3f4f6);padding:16px;border-radius:8px;margin-top:16px">
+            <h4 style="margin:0 0 12px">新建复习卡片</h4>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <textarea id="card-front-input" rows="2" placeholder="问题面（如：什么是导数的几何意义？）" style="padding:8px 12px;border:1px solid var(--border,#e5e7eb);border-radius:6px;font-size:14px;resize:vertical"></textarea>
+              <textarea id="card-back-input" rows="2" placeholder="答案面（如：切线的斜率）" style="padding:8px 12px;border:1px solid var(--border,#e5e7eb);border-radius:6px;font-size:14px;resize:vertical"></textarea>
+              <input id="card-subject-input" placeholder="学科（可选）" style="padding:8px 12px;border:1px solid var(--border,#e5e7eb);border-radius:6px;font-size:14px">
+              <div style="display:flex;gap:8px">
+                <button id="card-save-btn" class="primary" type="button">保存</button>
+                <button id="card-cancel-btn" class="ghost" type="button">取消</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="study-status" style="font-size:12px;color:var(--text-muted,#6b7280);margin-top:8px;min-height:16px"></div>
+        </div>`;
+    }
+
+    function statCard(icon, label, value, color) {
+      return '<div style="background:var(--surface-2,#f3f4f6);border-radius:10px;padding:14px 16px;text-align:center">'
+        + '<div style="font-size:22px;margin-bottom:4px">' + icon + '</div>'
+        + '<div style="font-size:24px;font-weight:700;color:' + color + '">' + value + '</div>'
+        + '<div style="font-size:12px;color:var(--text-muted,#6b7280);margin-top:2px">' + label + '</div>'
+        + '</div>';
+    }
+
+    function setStudyStatus(msg) {
+      const el = document.getElementById('study-status');
+      if (el) el.textContent = msg;
+    }
+
+    async function loadStudyData() {
+      setStudyStatus('加载中…');
+      try {
+        const [statsRes, goalsRes, reviewRes] = await Promise.all([
+          fetch('/api/study/stats'),
+          fetch('/api/study/goals'),
+          fetch('/api/study/review?limit=10'),
+        ]);
+
+        if (statsRes.ok) {
+          const stats = await statsRes.json();
+          const row = document.getElementById('study-stats-row');
+          if (row) {
+            row.innerHTML =
+              statCard('🔥', '连续学习天数', stats.streak_days ?? 0, '#ef4444') +
+              statCard('🃏', '今日到期', stats.due_today ?? 0, '#f59e0b') +
+              statCard('✅', '已掌握卡片', stats.mastered_items ?? 0, '#10b981') +
+              statCard('🎯', '活跃目标', stats.active_goals ?? 0, '#6366f1');
+          }
+          const dueEl = document.getElementById('due-count');
+          if (dueEl) dueEl.textContent = stats.due_today ?? 0;
+        }
+
+        if (goalsRes.ok) {
+          const goals = await goalsRes.json();
+          const list = document.getElementById('study-goals-list');
+          if (list) {
+            if (!goals.goals || goals.goals.length === 0) {
+              list.innerHTML = '<div style="color:var(--text-muted,#9ca3af);font-size:13px;padding:12px">暂无学习目标，点击上方"+ 添加目标"开始</div>';
+            } else {
+              list.innerHTML = goals.goals.map(g => {
+                const pct = g.progress_pct || 0;
+                const color = pct >= 80 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#6366f1';
+                return '<div style="background:var(--surface,#fff);border:1px solid var(--border,#e5e7eb);border-radius:8px;padding:12px">'
+                  + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+                  + '<span style="font-weight:600;font-size:14px">' + (g.title || '').replace(/</g,'&lt;') + '</span>'
+                  + '<span style="font-size:12px;color:var(--text-muted,#9ca3af)">' + (g.subject || '') + '</span>'
+                  + '</div>'
+                  + '<div style="background:var(--border,#e5e7eb);border-radius:4px;height:6px;overflow:hidden">'
+                  + '<div style="background:' + color + ';height:100%;width:' + pct + '%;transition:width .3s"></div>'
+                  + '</div>'
+                  + '<div style="font-size:12px;color:var(--text-muted,#9ca3af);margin-top:4px">' + pct + '% 完成'
+                  + (g.target_date ? ' · 目标日期 ' + g.target_date.slice(0,10) : '') + '</div>'
+                  + '</div>';
+              }).join('');
+            }
+          }
+        }
+
+        if (reviewRes.ok) {
+          const review = await reviewRes.json();
+          const area = document.getElementById('study-review-area');
+          if (area) {
+            const items = review.items || [];
+            if (items.length === 0) {
+              area.innerHTML = '<div style="color:var(--text-muted,#9ca3af);font-size:13px;padding:12px">今日无到期卡片，继续保持！🎉</div>';
+            } else {
+              area.innerHTML = items.slice(0,5).map(item => {
+                const uid = item.item_uid;
+                return '<div id="card-' + uid + '" style="background:var(--surface,#fff);border:1px solid var(--border,#e5e7eb);border-radius:8px;padding:12px">'
+                  + '<div style="font-size:14px;font-weight:500;margin-bottom:4px">' + (item.front || '').replace(/</g,'&lt;') + '</div>'
+                  + '<details style="margin:4px 0">'
+                  + '<summary style="font-size:12px;cursor:pointer;color:var(--accent,#6366f1)">查看答案</summary>'
+                  + '<div style="margin-top:6px;font-size:13px;color:var(--text,#374151)">' + (item.back || '').replace(/</g,'&lt;') + '</div>'
+                  + '</details>'
+                  + '<div style="display:flex;gap:6px;margin-top:8px">'
+                  + [['😰 忘了', 0, '#ef4444'], ['😅 模糊', 2, '#f59e0b'], ['😊 记住', 3, '#10b981'], ['🎯 完美', 5, '#6366f1']].map(([label, q, c]) =>
+                    '<button onclick="studyRecordResult(\'' + uid + '\',' + q + ')" style="flex:1;padding:5px 4px;font-size:12px;border:none;border-radius:5px;background:' + c + '1a;color:' + c + ';cursor:pointer">' + label + '</button>'
+                  ).join('')
+                  + '</div>'
+                  + '</div>';
+              }).join('');
+              if (items.length > 5) {
+                area.innerHTML += '<div style="font-size:12px;color:var(--text-muted,#9ca3af);padding:8px 12px">还有 ' + (items.length - 5) + ' 张卡片待复习…</div>';
+              }
+            }
+          }
+        }
+        setStudyStatus('');
+      } catch (e) {
+        setStudyStatus('加载失败: ' + e.message);
+      }
+    }
+
+    window.studyRecordResult = async function (itemUid, quality) {
+      const card = document.getElementById('card-' + itemUid);
+      if (card) card.style.opacity = '0.5';
+      try {
+        const resp = await fetch('/api/study/review/items/' + itemUid + '/result', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-csrf-token': getCsrfToken() },
+          body: JSON.stringify({ quality }),
+        });
+        if (resp.ok && card) {
+          card.style.transition = 'all .3s';
+          card.style.opacity = '0';
+          setTimeout(() => { card.remove(); loadStudyData(); }, 300);
+        }
+      } catch (e) {
+        if (card) card.style.opacity = '1';
+        setStudyStatus('记录失败: ' + e.message);
+      }
+    };
+
+    async function saveGoal() {
+      const title = document.getElementById('goal-title-input').value.trim();
+      if (!title) { setStudyStatus('请填写目标标题'); return; }
+      const payload = {
+        title,
+        subject: document.getElementById('goal-subject-input').value.trim(),
+        target_date: document.getElementById('goal-date-input').value || null,
+      };
+      try {
+        const resp = await fetch('/api/study/goals', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-csrf-token': getCsrfToken() },
+          body: JSON.stringify(payload),
+        });
+        if (resp.ok) {
+          document.getElementById('study-add-goal-form').style.display = 'none';
+          loadStudyData();
+        } else {
+          setStudyStatus('保存失败: ' + resp.status);
+        }
+      } catch (e) {
+        setStudyStatus('保存失败: ' + e.message);
+      }
+    }
+
+    async function saveCard() {
+      const front = document.getElementById('card-front-input').value.trim();
+      const back = document.getElementById('card-back-input').value.trim();
+      if (!front || !back) { setStudyStatus('问题面和答案面都必须填写'); return; }
+      try {
+        const resp = await fetch('/api/study/review/items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-csrf-token': getCsrfToken() },
+          body: JSON.stringify({ front, back, subject: document.getElementById('card-subject-input').value.trim() }),
+        });
+        if (resp.ok) {
+          document.getElementById('study-add-card-form').style.display = 'none';
+          loadStudyData();
+        } else {
+          setStudyStatus('保存失败: ' + resp.status);
+        }
+      } catch (e) {
+        setStudyStatus('保存失败: ' + e.message);
+      }
+    }
+
+    function initStudyPanel() {
+      const tabBtn = document.querySelector('[data-tab="study"]');
+      const host = document.getElementById('panel-host');
+      if (!tabBtn || !host) return;
+
+      tabBtn.addEventListener('click', () => {
+        if (document.getElementById('study-panel')) return;
+        host.innerHTML = studyPanelHTML();
+        loadStudyData();
+
+        document.getElementById('study-refresh-btn').addEventListener('click', loadStudyData);
+        document.getElementById('study-add-goal-btn').addEventListener('click', () => {
+          document.getElementById('study-add-goal-form').style.display = 'block';
+          document.getElementById('study-add-card-form').style.display = 'none';
+        });
+        document.getElementById('study-add-card-btn').addEventListener('click', () => {
+          document.getElementById('study-add-card-form').style.display = 'block';
+          document.getElementById('study-add-goal-form').style.display = 'none';
+        });
+        document.getElementById('goal-save-btn').addEventListener('click', saveGoal);
+        document.getElementById('goal-cancel-btn').addEventListener('click', () => {
+          document.getElementById('study-add-goal-form').style.display = 'none';
+        });
+        document.getElementById('card-save-btn').addEventListener('click', saveCard);
+        document.getElementById('card-cancel-btn').addEventListener('click', () => {
+          document.getElementById('study-add-card-form').style.display = 'none';
+        });
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initStudyPanel);
+    } else {
+      initStudyPanel();
+    }
+  })();
+  </script>
+  <script>
   /* ── Web Chat Panel ───────────────────────────────────────────────────────── */
   (function () {
     'use strict';
+
+    /* 轻量级 Markdown 渲染（不依赖外部库）*/
+    function renderMarkdown(text) {
+      const escaped = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      return escaped
+        .replace(/```([\s\S]*?)```/g, '<pre style="background:rgba(0,0,0,.06);padding:8px 12px;border-radius:6px;overflow-x:auto;font-size:13px;margin:4px 0"><code>$1</code></pre>')
+        .replace(/`([^`]+)`/g, '<code style="background:rgba(0,0,0,.06);padding:2px 5px;border-radius:4px;font-size:13px">$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .replace(/^### (.+)$/gm, '<h4 style="margin:8px 0 2px;font-size:14px">$1</h4>')
+        .replace(/^## (.+)$/gm, '<h3 style="margin:10px 0 4px;font-size:15px">$1</h3>')
+        .replace(/^# (.+)$/gm, '<h2 style="margin:10px 0 4px;font-size:16px">$1</h2>')
+        .replace(/^[-*] (.+)$/gm, '<li style="margin:2px 0">$1</li>')
+        .replace(/(<li[^>]*>.*<\/li>(\n|$))+/g, m => '<ul style="margin:4px 0;padding-left:20px">' + m + '</ul>')
+        .replace(/\n\n/g, '</p><p style="margin:6px 0">')
+        .replace(/\n/g, '<br>');
+    }
 
     const CHAT_PANEL_HTML = `
       <div id="webchat-panel" class="panel-section" style="max-width:860px;margin:0 auto;display:flex;flex-direction:column;height:calc(100vh - 200px)">
@@ -159,12 +450,16 @@
       label.style.cssText = 'font-size:11px;color:var(--text-muted,#9ca3af);margin-bottom:3px';
       const bubble = document.createElement('div');
       bubble.style.cssText = [
-        'max-width:74%;padding:10px 14px;border-radius:14px;line-height:1.65;font-size:14px;white-space:pre-wrap;word-break:break-word',
+        'max-width:74%;padding:10px 14px;border-radius:14px;line-height:1.65;font-size:14px;word-break:break-word',
         isUser
-          ? 'background:var(--accent,#6366f1);color:#fff;border-bottom-right-radius:3px'
+          ? 'background:var(--accent,#6366f1);color:#fff;border-bottom-right-radius:3px;white-space:pre-wrap'
           : 'background:var(--surface-2,#f3f4f6);color:var(--text,#111827);border-bottom-left-radius:3px',
       ].join(';');
-      bubble.textContent = text;
+      if (isUser) {
+        bubble.textContent = text;
+      } else {
+        bubble.innerHTML = renderMarkdown(text);
+      }
       wrap.appendChild(label);
       wrap.appendChild(bubble);
       el.appendChild(wrap);
@@ -244,7 +539,7 @@
               if (ev.type === 'token' || ev.type === 'delta') {
                 buffer += (ev.text || ev.delta || '');
                 if (assistantBubble) {
-                  assistantBubble.textContent = buffer + '▌';
+                  assistantBubble.textContent = buffer + '▌';  // 流式期间用纯文本
                   const msgEl = document.getElementById('chat-messages');
                   if (msgEl) msgEl.scrollTop = msgEl.scrollHeight;
                 }
@@ -254,7 +549,13 @@
             } catch { /* 忽略非 JSON 行 */ }
           }
         }
-        if (assistantBubble) assistantBubble.textContent = buffer || '（无回复）';
+        if (assistantBubble) {
+          if (buffer) {
+            assistantBubble.innerHTML = renderMarkdown(buffer);  // 完成后用 Markdown 渲染
+          } else {
+            assistantBubble.textContent = '（无回复）';
+          }
+        }
       } catch (e) {
         if (assistantBubble) assistantBubble.textContent = '请求失败: ' + e.message;
       } finally {
