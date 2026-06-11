@@ -5,6 +5,7 @@ from typing import Any
 
 import discord
 
+from src.bot.commands import CommandRouter
 from src.bot.message_router import MessageRouter
 from src.services.companion_service import CompanionService
 
@@ -18,15 +19,28 @@ class DiscordMessageHandler:
         *,
         router: MessageRouter,
         companion_service: CompanionService,
+        command_router: CommandRouter | None = None,
     ) -> None:
         self.router = router
         self.companion_service = companion_service
+        self.command_router = command_router
 
     async def handle_message(self, client: discord.Client, message: discord.Message) -> None:
         if not self.router.should_handle_message(message, client.user):
             return
 
         user_content = self.router.extract_user_content(message, client.user)
+
+        # 先检查是否是文本命令（/goals, /review, /stats 等）
+        if self.command_router and user_content and user_content.strip().startswith("/"):
+            try:
+                reply = await self.command_router.handle_command(message)
+                if reply is not None:
+                    await message.channel.send(reply)
+                    return
+            except Exception:
+                logger.exception("Failed to handle command in message %s", message.id)
+
         if not user_content and not message.attachments:
             return
 

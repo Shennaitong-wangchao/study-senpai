@@ -8,6 +8,7 @@ from pathlib import Path
 import uvicorn
 
 from src.bot.discord_client import ShenZhiweiDiscordClient
+from src.bot.commands import CommandRouter
 from src.bot.handlers import DiscordMessageHandler
 from src.bot.message_router import MessageRouter
 from src.core.exceptions import ConfigurationError
@@ -178,9 +179,11 @@ async def run() -> None:
         task_manager=task_manager,
     )
     router = MessageRouter(settings)
+    command_router = CommandRouter(db=database) if settings.run_discord_bot else None
     handler = DiscordMessageHandler(
         router=router,
         companion_service=companion_service,
+        command_router=command_router,
     )
     client = ShenZhiweiDiscordClient(handler=handler) if settings.run_discord_bot else None
     dashboard_server: uvicorn.Server | None = None
