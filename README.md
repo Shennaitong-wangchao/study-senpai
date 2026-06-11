@@ -1,311 +1,514 @@
-# Study Senpai
+<div align="center">
 
-一个本地优先的学习陪伴框架，提供长期记忆、学习支持和主动关怀能力。
+# Study Senpai — 本地优先 AI 学习陪伴框架
 
-Study Senpai 是一个可自托管的 Python + SQLite 陪伴系统，包含 iOS 客户端、可选 Discord Bot 路径，以及可审计的 Dashboard。它适合希望获得学习陪伴、长期记忆和可控数据状态的用户。
+**长期记忆 · 学习目标 · 间隔复习 · 主动关怀 · 完全自托管**
 
-## 包含内容
+[![CI](https://github.com/Shennaitong-wangchao/study-senpai/actions/workflows/ci.yml/badge.svg)](https://github.com/Shennaitong-wangchao/study-senpai/actions)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![SQLite](https://img.shields.io/badge/storage-SQLite-003B57.svg)](https://www.sqlite.org/)
+[![FastAPI](https://img.shields.io/badge/dashboard-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
+[![Discord](https://img.shields.io/badge/runtime-Discord-5865F2.svg)](https://discord.com/)
+[![iOS](https://img.shields.io/badge/client-iOS%20SwiftUI-000000.svg)](ios/Lover/)
+[![Tests](https://img.shields.io/badge/tests-332%20passing-brightgreen.svg)](#开发与测试)
 
-- 使用 SQLite 持久化的 Python 后端。
-- 用于记忆审阅、可观测性和本地运维的 FastAPI Dashboard。
-- 供 `ios/Lover/` 下 SwiftUI iOS 客户端使用的 Mobile API。
-- 可选的 Discord Bot 运行时。
-- 记忆提取、审阅、归档/恢复、摘要和主动关怀流程。
+[English](#english-fallback) · [快速开始](#快速开始) · [功能特性](#功能特性) · [人格系统](#人格系统) · [架构](#架构) · [文档](#文档) · [贡献](#贡献)
 
-沈知微是项目内置的默认示例人格。它代表的是示例产品行为，不是固定的托管服务身份。
+</div>
 
-## 当前状态
+---
 
-这是一个早期源码版本，适合本地开发和个人自托管。若要用于生产部署，还需要完成常规运维工作，例如 TLS、反向代理或防火墙规则、备份、令牌轮换和监控。
+Study Senpai 是一个**可自托管的 AI 学习陪伴系统**。它在本地运行，数据完全在你手里。搭配 Discord、Web 浏览器或 iOS App 使用，支持长期记忆、主动关怀、学习目标追踪和间隔复习。
+
+你可以直接用内置的沈知微人格，也可以用 YAML 定义自己的 AI 伴侣，无需改任何核心代码。
+
+---
+
+## 功能特性
+
+### 核心能力
+
+| 功能 | 说明 |
+|------|------|
+| **长期记忆** | 自动提取会话记忆，按重要性分层存储，跨会话持续记住用户 |
+| **主动关怀** | 定时主动发起关心消息，支持深夜安静模式和节奏管控 |
+| **学习目标** | 创建学习目标，追踪进度，生成 AI 学习计划（紧迫度自动计算）|
+| **间隔复习** | SM-2 算法闪卡系统，Anki TSV 格式导入/导出 |
+| **多入口** | Discord Bot、Web Dashboard、iOS App、Mobile API 四端同步 |
+| **YAML 人格** | YAML 定义完整人格，6 个内置，社区可贡献更多 |
+| **成就系统** | 13 个学习成就（streak/掌握/目标/时长）|
+| **记忆治理** | 导出备份、高级过滤、健康度评分、关系图谱 |
+| **可视化数据** | 热力图、学科分布、记忆图谱（节点+边）|
+| **现实感知** | 接入天气、日历，让 AI 的发言有真实时间和场景依据 |
+| **WebSocket** | Dashboard 实时通知推送，toast 提醒 |
+| **附件理解** | 支持 PDF、Word、图片、音频文件分析 |
+
+### 运行时
+
+- **Discord Bot** — 在 Discord 频道直接聊天
+- **Web Dashboard** — 浏览器中管理记忆、查看指标、审核候选记忆
+- **Mobile API** — 供 iOS App 和第三方客户端调用的 REST API
+- **iOS Client** — 原生 SwiftUI 应用，支持聊天、时间线、附件
+
+### LLM 兼容性
+
+支持任何 OpenAI 兼容的 API 端点：
+
+| 提供商 | 设置方式 |
+|--------|---------|
+| OpenAI | `LLM_BASE_URL=https://api.openai.com/v1` |
+| Anthropic Claude | `LLM_BASE_URL=https://api.anthropic.com/v1` |
+| Ollama (本地) | `LLM_BASE_URL=http://localhost:11434/v1` |
+| Groq | `LLM_BASE_URL=https://api.groq.com/openai/v1` |
+| DeepSeek | `LLM_BASE_URL=https://api.deepseek.com/v1` |
+| 任意 OpenAI 兼容 API | 设置 `LLM_BASE_URL` 即可 |
+
+---
 
 ## 快速开始
 
-使用 Python 3.11 或更新版本。当前 CI 工作流使用 Python 3.11 进行测试。
+### 方式一：Python 直接运行（推荐本地开发）
+
+**前置要求：** Python 3.11+，任意 OpenAI 兼容 API Key
 
 ```bash
+# 克隆仓库
+git clone https://github.com/Shennaitong-wangchao/study-senpai.git
+cd study-senpai
+
+# 创建虚拟环境
 python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -r requirements.txt
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 配置（只填你需要的）
 cp .env.example .env
 ```
 
-编辑 `.env`，只填写你需要的配置：
+最小配置，只启动 Dashboard：
+
+```env
+LLM_API_KEY=your-api-key-here
+LLM_MODEL=gpt-4.1-mini
+RUN_DISCORD_BOT=false
+DASHBOARD_ENABLED=true
+```
 
 ```bash
-LLM_API_KEY=
+# 启动
+python3 -m src.main
+
+# 打开 Dashboard
+open http://127.0.0.1:8099
+```
+
+> 想快速看到完整的 Demo 效果（含学习数据）？用 `make seed-demo` 生成演示数据库，详见 [DEMO.md](DEMO.md)。
+
+### 方式二：Docker（推荐生产部署）
+
+```bash
+# 复制配置
+cp .env.example .env
+# 编辑 .env 填入你的 API Key 和 Model
+
+# 一键启动
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+
+# 打开 Dashboard
+open http://127.0.0.1:8099
+```
+
+### 加入 Discord Bot
+
+在 `.env` 中追加：
+
+```env
+RUN_DISCORD_BOT=true
+DISCORD_BOT_TOKEN=your-discord-bot-token
+```
+
+然后重启服务。
+
+---
+
+## 架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         运行入口                              │
+│  Discord Bot  │  Web Dashboard  │  iOS App  │  Mobile API   │
+└───────┬───────┴────────┬────────┴─────┬─────┴───────┬───────┘
+        │                │              │             │
+        └────────────────┴──────────────┴─────────────┘
+                                 │
+                    ┌────────────▼────────────┐
+                    │    CompanionService      │
+                    │  - 消息写入 & Presence   │
+                    │  - 回复规划 & LLM 调用   │
+                    │  - 附件处理 & 搜索       │
+                    └────────────┬────────────┘
+                                 │
+          ┌──────────────────────┼──────────────────────┐
+          │                      │                      │
+   ┌──────▼──────┐     ┌─────────▼────────┐    ┌───────▼───────┐
+   │MemoryPipeline│    │  ReplyService    │    │ProductStore   │
+   │ - 提取候选   │    │  - Prompt 构建   │    │ - 任务队列    │
+   │ - 长期写入   │    │  - LLM 流式调用  │    │ - 可观测性    │
+   │ - 会话摘要   │    │  - 备用模型降级  │    │ - 安全审计    │
+   └──────┬──────┘    └──────────────────┘    └───────────────┘
+          │
+   ┌──────▼──────────────────────────────────────┐
+   │              SQLite (本地存储)                 │
+   │  messages · memories · facts · relationships │
+   │  tasks · audit · diary · goals · review      │
+   └─────────────────────────────────────────────┘
+```
+
+### 目录结构
+
+```
+src/
+  core/          设置加载、日志、异常、共享类型
+  db/            SQLite schema、迁移
+  memory/        记忆提取、检索、写入、会话摘要
+  persona/       人格系统（Python + YAML 注册表）
+  services/      CompanionService、ReplyService、MemoryService
+  bot/           Discord 客户端和消息路由
+  dashboard/     FastAPI Dashboard + /mobile API
+  llm/           LLM 客户端、Prompt 构建器
+  product/       附件、Day Engine、Proactive、Health、学习系统
+  mobile/        Mobile API Schema
+personas/        YAML 人格注册表（可社区贡献）
+ios/Lover/       SwiftUI iOS 客户端
+scripts/         合同检查、冒烟测试、发布门禁
+docs/            架构、路线图、运维手册、测试指南
+```
+
+---
+
+## 人格系统
+
+Study Senpai 使用 YAML 定义人格，无需修改核心代码：
+
+```yaml
+# personas/my_persona.yaml
+name: 林晴
+age: 20
+school_role: 大二学姐
+public_title: 活泼温柔的学习陪伴者
+core_identity: |
+  你是林晴，20岁，活泼开朗的理工科女生。
+  你喜欢用清晰的逻辑帮别人理清思路，也喜欢在学习间隙聊聊轻松的话题。
+tone: 活泼自然，偶尔俏皮，但认真起来非常靠谱
+language: 默认使用中文，支持切换英文
+# ... 其他字段
+```
+
+通过环境变量指定人格：
+
+```env
+PERSONA_FILE=personas/my_persona.yaml
+```
+
+内置人格（6 个，社区可贡献更多）：
+
+| 文件 | 人格 | 风格 |
+|------|------|------|
+| `personas/shen_zhiwei.yaml` | 沈知微（默认） | 温柔克制、高三学姐 |
+| `personas/study_buddy.yaml` | 林晓研 | 学术严谨、研究生助手 |
+| `personas/english_coach.yaml` | Alex | 耐心风趣、英语口语教练 |
+| `personas/code_mentor.yaml` | 林程远 | 务实引导、全栈代码导师 |
+| `personas/history_teacher.yaml` | 史云飞教授 | 幽默博学、历史故事讲述者 |
+| `personas/wellness_buddy.yaml` | 何悠悠 | 温暖细腻、健康生活伙伴 |
+
+---
+
+## Dashboard
+
+> 运行在 `http://127.0.0.1:8099`，包含以下功能面板：
+
+| 面板 | 功能 |
+|------|------|
+| **总览** | 会话、记忆、任务统计 |
+| **💬 聊天** | 浏览器内直接对话 AI |
+| **📚 学习** | 目标管理、SM-2 复习队列、统计卡片 |
+| **长期记忆** | 记忆列表、归档/恢复、导出 |
+| **候选记忆** | 批量审核 AI 提取的记忆 |
+| **共享日记** | Day Engine 日记面板 |
+| **她的一天** | AI 当日状态时间线 |
+| **Turn Trace** | 每次对话的完整可观测性 |
+| **主动消息** | 主动关怀发送历史 |
+| **性能成本** | LLM 延迟、token 消耗 |
+| **安全控制** | 登录审计、操作日志 |
+
+---
+
+## Discord 命令
+
+在 Discord DM 中可使用文本命令：
+
+```
+/help          — 查看所有命令
+/stats         — 学习统计（streak、今日复习等）
+/goals         — 查看学习目标列表
+/review        — 今日到期复习卡片
+/addgoal <标题> | <学科>   — 添加学习目标
+/addcard <问题> | <答案>   — 添加复习卡片
+```
+
+其他消息直接发给 AI 陪伴。
+
+---
+
+## 学习功能
+
+### 学习目标
+
+```bash
+# 通过 Dashboard API 创建目标
+curl -X POST http://localhost:8099/api/study/goals \
+  -H "Content-Type: application/json" \
+  -d '{"title": "高考数学备考", "subject": "数学", "target_date": "2026-06-07"}'
+```
+
+### 间隔复习（SM-2 算法）
+
+```bash
+# 添加复习卡片
+curl -X POST http://localhost:8099/api/study/review/items \
+  -d '{"front": "什么是导数的几何意义？", "back": "切线斜率", "subject": "数学"}'
+
+# 获取今日到期卡片
+curl http://localhost:8099/api/study/review
+
+# 记录复习结果（quality 0-5）
+curl -X POST http://localhost:8099/api/study/review/items/{uid}/result \
+  -d '{"quality": 4}'
+```
+
+---
+
+## 记忆治理
+
+### 导出记忆备份
+
+```bash
+# 导出为 JSON（可用于迁移）
+curl http://localhost:8099/api/memories/export?format=json -o memories_backup.json
+
+# 导出为 Markdown（人类可读）
+curl http://localhost:8099/api/memories/export?format=markdown -o memories.md
+```
+
+### 从备份导入
+
+```bash
+curl -X POST http://localhost:8099/api/memories/import \
+  -F "file=@memories_backup.json"
+```
+
+---
+
+## 部署指南
+
+### 生产部署注意事项
+
+1. **设置 `MOBILE_API_TOKEN`** — 保护 `/mobile/*` 端点
+2. **启用 Dashboard Auth** — 设置强密码，避免公开暴露
+3. **TLS 终止** — 使用 Nginx/Caddy 反向代理 + HTTPS
+4. **备份 SQLite** — 定期备份 `data/` 目录
+
+最小生产配置示例：
+
+```env
+LLM_API_KEY=sk-...
 LLM_MODEL=gpt-4.1-mini
 RUN_DISCORD_BOT=false
 DASHBOARD_ENABLED=true
 DASHBOARD_HOST=127.0.0.1
-DASHBOARD_PORT=8099
-MOBILE_API_TOKEN=
+DASHBOARD_AUTH_ENABLED=true
+DASHBOARD_AUTH_USERNAME=admin
+DASHBOARD_AUTH_PASSWORD=your-strong-password-here
+MOBILE_API_TOKEN=your-mobile-token-here
 ```
 
-启动后端和 Dashboard：
+详见 [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) 和 [SECURITY.md](SECURITY.md)。
 
-```bash
-python3 -m src.main
-```
+---
 
-在本地打开 Dashboard：
+## iOS 配置
 
-```text
-http://127.0.0.1:8099
-```
+iOS App 在 `ios/Lover/` 目录。不包含硬编码的后端地址。
 
-运行轻量检查：
+1. 在 iOS App **Settings** 中设置 **Server Base URL**
+2. 如使用仓库默认端口：`http://127.0.0.1:8099`
+3. 如果设置了 `MOBILE_API_TOKEN`，在 **Mobile API Token** 中填入相同的值
 
-```bash
-python3 scripts/mobile_contracts.py
-python3 scripts/dashboard_contracts.py
-python3 scripts/verify_product.py
-```
-
-## 环境变量
-
-后端回复所需配置：
-
-- `LLM_API_KEY`：模型服务商密钥。请保存在 `.env` 中，不要提交到仓库。
-- `LLM_MODEL`：默认模型名称。
-- `LLM_BASE_URL`：可选的 OpenAI 兼容 API 地址。
-- `LLM_PROMPT_CACHING_ENABLED`：默认为 `true`；会将静态提示词内容放在前面以适配 OpenAI 风格的自动缓存，并在 `LLM_BASE_URL` 指向 Anthropic 时使用其原生缓存断点。
-
-Discord 路径：
-
-- `RUN_DISCORD_BOT`：设置为 `true` 时启动 Discord。
-- `DISCORD_BOT_TOKEN`：仅在 `RUN_DISCORD_BOT=true` 时需要。
-- `DISCORD_APPLICATION_ID`：可选的应用 ID。
-
-本地状态：
-
-- `DATABASE_PATH`：默认使用 `data/` 下的 SQLite 文件。
-- `LOG_FILE_PATH`：默认使用 `logs/` 下的日志文件。
-- `BOT_TIMEZONE`：默认为 `Asia/Shanghai`。
-
-Dashboard 和 Mobile API：
-
-- `DASHBOARD_ENABLED`：启动 FastAPI Dashboard/Mobile 后端。
-- `DASHBOARD_HOST` / `DASHBOARD_PORT`：绑定地址和端口。
-- `DASHBOARD_AUTH_ENABLED`、`DASHBOARD_AUTH_USERNAME`、`DASHBOARD_AUTH_PASSWORD`：Dashboard 登录配置。
-- `MOBILE_API_TOKEN`：`/mobile/*` 的可选 Bearer Token。如果要在 localhost 之外暴露 Mobile API，请先设置它。
-
-## iOS 后端配置
-
-iOS App 不包含硬编码的公开或私有后端地址。
-
-- Debug 默认 Server Base URL 为 `http://127.0.0.1:8000`。
-- 在 iOS App 中打开 **Settings**，编辑 **Server Base URL**。
-- 如果 Python 后端使用仓库默认端口，请设置为 `http://127.0.0.1:8099`。
-- 如果后端设置了 `MOBILE_API_TOKEN`，请在 **Mobile API Token** 中填写同一个值。
-
-如果要配合 iOS 默认地址进行模拟器测试，请这样启动后端：
+模拟器测试快捷启动：
 
 ```bash
 DASHBOARD_PORT=8000 python3 -m src.main
 ```
 
-## 项目结构
+---
 
-```text
-src/
-  core/          设置、日志、共享类型
-  db/            SQLite schema 和迁移
-  memory/        记忆提取、检索、写入和摘要
-  persona/       默认沈知微人格和回复策略
-  services/      陪伴、回复和记忆编排
-  bot/           Discord 客户端和消息路由
-  dashboard/     FastAPI Dashboard 和 /mobile API
-  mobile/        Mobile API schema
-  product/       附件、主动关怀、day engine、可观测性
-ios/Lover/       SwiftUI iOS 客户端
-scripts/         合同检查、冒烟检查和回归检查
-docs/            架构、路线图、运维和演示文档
+## 环境变量参考
+
+**LLM 配置**
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `LLM_API_KEY` | — | **必填** API Key |
+| `LLM_MODEL` | — | **必填** 主模型名 |
+| `LLM_BASE_URL` | `https://api.openai.com/v1` | API 基地址，支持任意 OpenAI 兼容端点 |
+| `LLM_REPLY_MODEL_FAST` | — | 快速回复模型（覆盖主模型） |
+| `LLM_REPLY_MODEL_THINKING` | — | 深思模式模型 |
+| `LLM_BACKUP_MODEL` | — | 主模型失败时的备用模型 |
+| `LLM_TIMEOUT_SECONDS` | `60` | LLM 请求超时 |
+
+**人格**
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PERSONA_FILE` | `personas/shen_zhiwei.yaml` | 人格 YAML 文件路径 |
+
+**Dashboard 和 Mobile API**
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `DASHBOARD_ENABLED` | `true` | 启动 Dashboard |
+| `DASHBOARD_HOST` | `127.0.0.1` | 绑定地址 |
+| `DASHBOARD_PORT` | `8099` | 绑定端口 |
+| `DASHBOARD_AUTH_ENABLED` | `true` | 启用登录认证 |
+| `DASHBOARD_AUTH_USERNAME` | `admin` | 登录用户名 |
+| `DASHBOARD_AUTH_PASSWORD` | 自动生成 | 登录密码 |
+| `MOBILE_API_TOKEN` | — | `/mobile/*` Bearer Token |
+
+**Discord**
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `RUN_DISCORD_BOT` | `true` | 启动 Discord Bot |
+| `DISCORD_BOT_TOKEN` | — | Discord Bot Token |
+
+**本地状态**
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `DATABASE_PATH` | `data/shen_zhiwei.sqlite3` | SQLite 数据库路径 |
+| `LOG_FILE_PATH` | `logs/shen_zhiwei.log` | 日志文件路径 |
+| `BOT_TIMEZONE` | `Asia/Shanghai` | 时区 |
+
+完整变量列表见 [.env.example](.env.example)。
+
+---
+
+## 开发与测试
+
+```bash
+# 运行测试
+python3 -m pytest
+
+# 合同检查
+python3 scripts/release_gate.py
+python3 scripts/mobile_contracts.py
+python3 scripts/dashboard_contracts.py
+python3 scripts/verify_product.py
+
+# 质量分析
+python3 scripts/quality_triage.py
 ```
 
-## 人格
+详细测试矩阵见 [docs/TESTING.md](docs/TESTING.md)。
+开发者上手指南见 [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)。
 
-沈知微是默认示例人格。当前实现将该人格放在 `src/persona/` 下的 Python 模块，以及 `src/llm/prompts/` 下的提示词文件中。计划中的 YAML/JSON 人格注册表方向见 [docs/PERSONA_SYSTEM_PUBLIC.md](docs/PERSONA_SYSTEM_PUBLIC.md)。
+---
+
+## 文档
+
+| 文档 | 内容 |
+|------|------|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 系统架构和数据流 |
+| [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | 本地开发设置和常见改动路径 |
+| [docs/TESTING.md](docs/TESTING.md) | 测试矩阵和测试规范 |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | 功能路线图 |
+| [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) | 生产运维手册 |
+| [docs/QUALITY_BASELINE.md](docs/QUALITY_BASELINE.md) | 发布门禁和质量基线 |
+| [docs/PERSONA_SYSTEM_PUBLIC.md](docs/PERSONA_SYSTEM_PUBLIC.md) | 人格系统设计文档 |
+| [USER_GUIDE.md](USER_GUIDE.md) | 用户使用指南 |
+| [SECURITY.md](SECURITY.md) | 安全和隐私说明 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南 |
+
+---
+
+## 贡献
+
+欢迎贡献！特别期待以下方向：
+
+- **新人格** — 在 `personas/` 下提交 YAML 人格文件
+- **LLM 提供商** — 测试并记录新的兼容提供商
+- **iOS 功能** — 改进 `ios/Lover/` 客户端
+- **Dashboard UI** — 改进 `src/dashboard/` 界面
+
+请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+```bash
+# 贡献流程
+fork → git clone → python3 -m venv .venv → pip install -r requirements.txt
+→ 改动 → python3 -m pytest → PR
+```
+
+---
 
 ## 安全与隐私
 
-- Study Senpai 是本地优先、自托管的项目，但如果绑定到公网主机，并不意味着它会自动保持私密。
-- `.env`、SQLite 数据库、`data/`、`logs/`、`secrets/`，以及 iOS 本地配置/签名文件默认会被忽略。
-- 当设置了 `MOBILE_API_TOKEN` 时，`/mobile/*` 需要 `Authorization: Bearer <MOBILE_API_TOKEN>`。
-- 如果没有设置 `MOBILE_API_TOKEN`，`/mobile/*` 只接受 localhost/dev 请求。不要在这种模式下公开暴露它。
-- Dashboard 认证和 Mobile Token 认证是分开的。除本地开发外，请保持 Dashboard 认证开启。
-- 不要提交 API Key、Discord Token、Cookie、聊天日志、生成媒体、SQLite 文件或导出的记忆数据。
+- Study Senpai 是本地优先、自托管的项目
+- 数据不离开你的机器（除非 LLM API 调用）
+- `.env`、SQLite、日志、聊天数据默认被 `.gitignore` 忽略
+- 请阅读 [SECURITY.md](SECURITY.md) 再进行公网部署
 
-发布或部署前，请先阅读 [SECURITY.md](SECURITY.md)。
-
-## 路线图
-
-- Stage 1.5 发布打磨：GitHub hygiene 文件、演示脚本和轻量 CI。
-- 人格注册表：将人格定义迁移到可审计的 YAML/JSON 配置。
-- 更安全的公网部署方案：反向代理示例、HTTPS 指引、令牌轮换流程。
-- 移动端打磨：持久化服务器配置、Token 校验页面、生成媒体缓存。
-- 记忆治理：导出/导入控制、脱敏流程、保留策略设置。
-- 学习工作流：目标、计划、间隔复习和学习会话分析。
-
-更多细节见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+---
 
 ## 许可证
 
-MIT。见 [LICENSE](LICENSE)。
-
+[MIT License](LICENSE) — 自由使用、修改、部署。
 
 ---
 
 ## English fallback
 
-Local-first companion framework for learning, memory, and proactive care.
+Study Senpai is a **self-hosted, local-first AI companion framework** for learning and long-term memory. It runs entirely on your machine with data under your control.
 
-Study Senpai is a self-hosted Python + SQLite companion system with an iOS client, Discord bot path, and auditable Dashboard. It is built for people who want learning support and long-running memory while keeping state under their own control.
+**Key features:** long-term memory across sessions, proactive check-ins, study goal tracking, spaced repetition (SM-2), YAML persona registry, Discord bot + Web Dashboard + iOS client, and compatibility with any OpenAI-compatible LLM API.
 
-## What Is Included
-
-- Python backend with SQLite persistence.
-- FastAPI Dashboard for memory review, observability, and local operations.
-- Mobile API used by the SwiftUI iOS client under `ios/Lover/`.
-- Optional Discord bot runtime.
-- Memory extraction, review, archive/restore, summaries, and proactive check-in flows.
-
-沈知微 is included as the default example persona. Treat it as sample product behavior, not a fixed hosted service identity.
-
-## Status
-
-This is an early source release. It is suitable for local development and personal self-hosting, but production deployment still needs normal operator work: TLS, reverse proxy or firewall rules, backups, token rotation, and monitoring.
-
-## Quick Start
-
-Use Python 3.11 or newer. The CI workflow currently tests with Python 3.11.
+**Quick start:**
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -r requirements.txt
-cp .env.example .env
-```
-
-Edit `.env` and fill only the values you need:
-
-```bash
-LLM_API_KEY=
-LLM_MODEL=gpt-4.1-mini
-RUN_DISCORD_BOT=false
-DASHBOARD_ENABLED=true
-DASHBOARD_HOST=127.0.0.1
-DASHBOARD_PORT=8099
-MOBILE_API_TOKEN=
-```
-
-Start the backend and Dashboard:
-
-```bash
+git clone https://github.com/Shennaitong-wangchao/study-senpai.git && cd study-senpai
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env  # set LLM_API_KEY and LLM_MODEL
 python3 -m src.main
+# open http://127.0.0.1:8099
 ```
 
-Open the Dashboard locally:
-
-```text
-http://127.0.0.1:8099
-```
-
-Run the lightweight checks:
+Or with Docker:
 
 ```bash
-python3 scripts/mobile_contracts.py
-python3 scripts/dashboard_contracts.py
-python3 scripts/verify_product.py
+cp .env.example .env  # fill in LLM_API_KEY and LLM_MODEL
+docker compose up -d
 ```
 
-## Environment Variables
+See the Chinese sections above for full documentation — all docs include English fallback sections.
 
-Required for backend replies:
+**Custom personas** — drop a YAML file in `personas/` and set `PERSONA_FILE=personas/my_persona.yaml`. No code changes needed.
 
-- `LLM_API_KEY`: model provider key. Keep it in `.env`; never commit it.
-- `LLM_MODEL`: default model name.
-- `LLM_BASE_URL`: optional OpenAI-compatible API base URL.
-- `LLM_PROMPT_CACHING_ENABLED`: defaults to `true`; keeps static prompt content first for OpenAI-style automatic caching
-  and uses Anthropic native cache breakpoints when `LLM_BASE_URL` points at Anthropic.
+**LLM providers** — works with OpenAI, Anthropic, Ollama (local), Groq, DeepSeek, or any OpenAI-compatible endpoint via `LLM_BASE_URL`.
 
-Discord path:
-
-- `RUN_DISCORD_BOT`: set `true` to start Discord.
-- `DISCORD_BOT_TOKEN`: required only when `RUN_DISCORD_BOT=true`.
-- `DISCORD_APPLICATION_ID`: optional application id.
-
-Local state:
-
-- `DATABASE_PATH`: defaults to a SQLite file under `data/`.
-- `LOG_FILE_PATH`: defaults to a log file under `logs/`.
-- `BOT_TIMEZONE`: defaults to `Asia/Shanghai`.
-
-Dashboard and mobile API:
-
-- `DASHBOARD_ENABLED`: starts the FastAPI Dashboard/mobile backend.
-- `DASHBOARD_HOST` / `DASHBOARD_PORT`: bind address and port.
-- `DASHBOARD_AUTH_ENABLED`, `DASHBOARD_AUTH_USERNAME`, `DASHBOARD_AUTH_PASSWORD`: Dashboard login.
-- `MOBILE_API_TOKEN`: optional Bearer token for `/mobile/*`. Set it before exposing mobile APIs beyond localhost.
-
-## iOS Backend Configuration
-
-The iOS app does not contain a hardcoded public or private backend URL.
-
-- Debug default Server Base URL: `http://127.0.0.1:8000`.
-- In the iOS app, open **Settings** and edit **Server Base URL**.
-- If your Python backend uses the repository default port, set it to `http://127.0.0.1:8099`.
-- If `MOBILE_API_TOKEN` is set on the backend, enter the same value in **Mobile API Token**.
-
-For simulator testing with the iOS default, start the backend with:
-
-```bash
-DASHBOARD_PORT=8000 python3 -m src.main
-```
-
-## Project Structure
-
-```text
-src/
-  core/          Settings, logging, shared types
-  db/            SQLite schema and migrations
-  memory/        Memory extraction, retrieval, writing, summaries
-  persona/       Default Shen Zhiwei persona and reply policies
-  services/      Companion, reply, and memory orchestration
-  bot/           Discord client and message routing
-  dashboard/     FastAPI Dashboard and /mobile API
-  mobile/        Mobile API schemas
-  product/       Attachments, proactive care, day engine, observability
-ios/Lover/       SwiftUI iOS client
-scripts/         Contract, smoke, and regression checks
-docs/            Architecture, roadmap, operations, demos
-```
-
-## Persona
-
-沈知微 is the default example persona. The current implementation keeps that persona in Python modules under `src/persona/` and prompt files under `src/llm/prompts/`. See [docs/PERSONA_SYSTEM_PUBLIC.md](docs/PERSONA_SYSTEM_PUBLIC.md) for the planned YAML/JSON persona registry direction.
-
-## Security And Privacy
-
-- Study Senpai is local-first and self-hosted, but it is not automatically private if you bind it to a public host.
-- `.env`, SQLite databases, `data/`, `logs/`, `secrets/`, and iOS local config/signing files are ignored by default.
-- `/mobile/*` requires `Authorization: Bearer <MOBILE_API_TOKEN>` when `MOBILE_API_TOKEN` is set.
-- If `MOBILE_API_TOKEN` is not set, `/mobile/*` accepts localhost/dev requests only. Do not expose it publicly in that mode.
-- Dashboard auth is separate from mobile token auth. Keep Dashboard auth enabled outside local development.
-- Do not commit API keys, Discord tokens, cookies, chat logs, generated media, SQLite files, or exported memory data.
-
-See [SECURITY.md](SECURITY.md) before publishing or deploying.
-
-## Roadmap
-
-- Stage 1.5 release polish: GitHub hygiene files, demo scripts, and lightweight CI.
-- Persona registry: move persona definitions into auditable YAML/JSON configs.
-- Safer public deployment profile: reverse proxy examples, HTTPS guidance, token rotation workflow.
-- Mobile polish: persisted server profiles, token validation screen, generated media cache.
-- Memory governance: export/import controls, redaction workflow, retention settings.
-- Study workflows: goals, plans, spaced review, and learning-session analytics.
-
-More detail: [docs/ROADMAP.md](docs/ROADMAP.md).
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+[Architecture](#架构) · [Deployment](#部署指南) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [License](LICENSE)

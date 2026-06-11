@@ -460,4 +460,64 @@ SCHEMA_STATEMENTS = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_reality_source_audits_scope ON reality_source_audits(user_id, conversation_id, created_at DESC)",
+    # ----------------------------------------------------------------
+    # 学习目标、间隔复习、学习会话（Study Senpai 核心功能）
+    # ----------------------------------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS study_goals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        goal_uid TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        subject TEXT,
+        target_date TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        progress_pct INTEGER NOT NULL DEFAULT 0,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_study_goals_user ON study_goals(user_id, status, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS review_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_uid TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL,
+        goal_uid TEXT,
+        front TEXT NOT NULL,
+        back TEXT NOT NULL,
+        subject TEXT,
+        tags_json TEXT NOT NULL DEFAULT '[]',
+        ease_factor REAL NOT NULL DEFAULT 2.5,
+        interval_days INTEGER NOT NULL DEFAULT 1,
+        repetitions INTEGER NOT NULL DEFAULT 0,
+        next_review_at TEXT,
+        last_reviewed_at TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_review_items_user ON review_items(user_id, status, next_review_at ASC)",
+    "CREATE INDEX IF NOT EXISTS idx_review_items_goal ON review_items(goal_uid, status)",
+    """
+    CREATE TABLE IF NOT EXISTS study_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_uid TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL,
+        goal_uid TEXT,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        focus_minutes INTEGER NOT NULL DEFAULT 0,
+        items_reviewed INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_study_sessions_user ON study_sessions(user_id, started_at DESC)",
 ]

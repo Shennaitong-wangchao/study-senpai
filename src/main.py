@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 
 import uvicorn
 
 from src.bot.discord_client import ShenZhiweiDiscordClient
+from src.bot.commands import CommandRouter
 from src.bot.handlers import DiscordMessageHandler
 from src.bot.message_router import MessageRouter
 from src.core.exceptions import ConfigurationError
@@ -26,6 +28,7 @@ from src.memory.store import MemoryStore
 from src.memory.summarizer import ConversationSummarizer
 from src.memory.writer import MemoryWriter
 from src.persona.profile import SHEN_ZHIWEI_PROFILE
+from src.persona.registry import PersonaLoadError, load_default_persona, load_persona
 from src.product.attachments import AttachmentService
 from src.product.health import HealthCheckService
 from src.product.metrics import ExperienceMetricsService
@@ -35,6 +38,7 @@ from src.product.search import SearchService
 from src.product.store import ProductStore
 from src.product.tasks import BackgroundTaskManager
 from src.services.memory_service import MemoryService
+from src.product.study import StudyService
 from src.services.companion_service import CompanionService
 from src.services.reply_service import ReplyService
 
@@ -85,6 +89,25 @@ async def run() -> None:
             "Nothing to run: enable at least one of RUN_DISCORD_BOT, RUN_BACKGROUND_WORKER, or DASHBOARD_ENABLED"
         )
 
+    # 加载人格配置：优先读取环境变量 PERSONA_FILE 指定的 YAML 文件，
+    # 其次尝试加载默认的 personas/shen_zhiwei.yaml，
+    # 最后回退到 Python 内联定义（保证兼容性）
+    persona_file_env = os.environ.get("PERSONA_FILE", "").strip()
+    if persona_file_env:
+        try:
+            active_persona = load_persona(persona_file_env)
+            logger.info("已从环境变量 PERSONA_FILE 加载人格：%s（文件：%s）", active_persona.name, persona_file_env)
+        except PersonaLoadError as exc:
+            logger.warning("无法从 PERSONA_FILE='%s' 加载人格，回退到 Python 内联定义。原因：%s", persona_file_env, exc)
+            active_persona = SHEN_ZHIWEI_PROFILE
+    else:
+        try:
+            active_persona = load_default_persona()
+            logger.info("已加载默认 YAML 人格：%s", active_persona.name)
+        except PersonaLoadError as exc:
+            logger.warning("无法加载默认 YAML 人格，回退到 Python 内联定义。原因：%s", exc)
+            active_persona = SHEN_ZHIWEI_PROFILE
+
     database = Database(settings.database_path)
     database.initialize()
 
@@ -112,7 +135,7 @@ async def run() -> None:
         summary_trigger_message_count=settings.summary_trigger_message_count,
     )
     memory_service = MemoryService(pipeline)
-    prompt_builder = PromptBuilder(SHEN_ZHIWEI_PROFILE)
+    prompt_builder = PromptBuilder(active_persona)
     reply_service = ReplyService(
         settings=settings,
         memory_service=memory_service,
@@ -157,9 +180,11 @@ async def run() -> None:
         task_manager=task_manager,
     )
     router = MessageRouter(settings)
+    command_router = CommandRouter(db=database) if settings.run_discord_bot else None
     handler = DiscordMessageHandler(
         router=router,
         companion_service=companion_service,
+        command_router=command_router,
     )
     client = ShenZhiweiDiscordClient(handler=handler) if settings.run_discord_bot else None
     dashboard_server: uvicorn.Server | None = None
@@ -209,6 +234,54 @@ async def run() -> None:
     task_manager.register_handler("health_check", handle_health_check)
     task_manager.register_handler("proactive_scan", handle_proactive_scan)
 
+    study_service = StudyService(db=database)
+
+    async def handle_daily_study_summary(_: dict) -> dict:
+        """每日 21:00 学习摘要任务：为最近活跃用户生成摘要并通过 Discord DM 发送。"""
+        # 查找近 7 天内有学习会话的活跃用户（最多处理 20 人）
+        active_user_rows = database.fetchall(
+            """
+            SELECT DISTINCT user_id FROM study_sessions
+            WHERE started_at >= datetime('now', '-7 days')
+            ORDER BY started_at DESC
+            LIMIT 20
+            """,
+        )
+        if not active_user_rows:
+            return {"sent": 0, "skipped": 0, "reason": "no_active_users"}
+
+        sent_count = 0
+        skipped_count = 0
+        for row in active_user_rows:
+            user_id = str(row["user_id"])
+            summary = study_service.generate_daily_summary(user_id)
+            # 当天没有任何学习活动，跳过
+            if summary["reviewed_today"] == 0 and summary["session_minutes"] == 0:
+                skipped_count += 1
+                continue
+
+            summary_text = study_service.get_review_summary_text(user_id)
+
+            # 通过 Discord DM 发送（仅在 Discord bot 可用时）
+            if client is not None:
+                try:
+                    discord_user = await client.fetch_user(int(user_id))
+                    dm_channel = await discord_user.create_dm()
+                    await dm_channel.send(summary_text)
+                    sent_count += 1
+                except Exception as exc:  # noqa: BLE001
+                    # Discord 不可用、用户 ID 非整数等，graceful 跳过
+                    logger.warning("每日摘要 DM 发送失败 user_id=%s: %s", user_id, exc)
+                    skipped_count += 1
+            else:
+                # Discord bot 未启用，仅记录日志
+                logger.info("每日摘要（Discord 未启用）user_id=%s:\n%s", user_id, summary_text)
+                skipped_count += 1
+
+        return {"sent": sent_count, "skipped": skipped_count}
+
+    task_manager.register_handler("daily_study_summary", handle_daily_study_summary)
+
     async def handle_observability_cleanup(_: dict) -> dict:
         return product_store.purge_old_observability(
             retention_days=settings.observability_retention_days,
@@ -248,6 +321,13 @@ async def run() -> None:
                 dedupe_key="observability-cleanup",
                 interval_seconds=24 * 60 * 60,
                 priority=0.2,
+            )
+            task_manager.schedule_periodic(
+                task_type="daily_study_summary",
+                payload_factory=lambda: {},
+                dedupe_key="daily-study-summary",
+                interval_seconds=86400,  # 每 24 小时触发一次
+                priority=0.3,
             )
         else:
             logger.warning(

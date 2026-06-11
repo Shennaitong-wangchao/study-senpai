@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -48,6 +48,7 @@ from src.product.proactive import (
 )
 from src.product.reality import RealityContextService
 from src.product.store import ProductStore
+from src.product.study import StudyService
 from src.mobile.schemas import (
     MobileAttachmentItem,
     MobileAttachmentUploadResponse,
@@ -619,6 +620,28 @@ def _serialize_summary_row(row: Any) -> dict[str, Any]:
     }
 
 
+def _serialize_shared_diary_row(row: Any) -> dict[str, Any]:
+    return {
+        "id": int(row["id"]),
+        "diary_uid": row["diary_uid"],
+        "user_id": row["user_id"],
+        "conversation_id": row["conversation_id"],
+        "route_uid": row["route_uid"],
+        "event_uid": row["event_uid"],
+        "local_date": row["local_date"],
+        "entry_type": row["entry_type"],
+        "title": row["title"],
+        "content": row["content"],
+        "role_scope": row["role_scope"],
+        "source": row["source"],
+        "importance": float(row["importance"]),
+        "tags": json_loads(row["tags_json"], []),
+        "metadata": json_loads(row["metadata_json"], {}),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
 def _serialize_proactive_row(row: Any) -> dict[str, Any]:
     metadata = json_loads(row["metadata_json"], {})
     accepted = row["accepted"]
@@ -650,8 +673,45 @@ def build_dashboard_app(
     companion_service: Any | None = None,
     attachment_service: Any | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="Shen Zhiwei Dashboard")
+    app = FastAPI(
+        title="Study Senpai — Dashboard API",
+        description=(
+            "Study Senpai 本地优先 AI 学习陪伴系统的 Dashboard 和 Mobile API。\n\n"
+            "**认证：** Dashboard 端点（`/api/*`）需要 Session Cookie（通过 `/api/login` 获取）。"
+            "Mobile 端点（`/mobile/*`）需要 Bearer Token（`Authorization: Bearer <MOBILE_API_TOKEN>`）。\n\n"
+            "**CSRF：** 所有 POST/PATCH/DELETE `/api/*` 请求需要 `x-csrf-token` 请求头（从登录响应获取）。"
+        ),
+        version="0.1.0",
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json",
+    )
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="dashboard-static")
+
+    # WebSocket 连接管理器（实时推送：学习提醒、主动消息通知）
+    class _WsManager:
+        def __init__(self) -> None:
+            self._connections: list[WebSocket] = []
+
+        async def connect(self, ws: WebSocket) -> None:
+            await ws.accept()
+            self._connections.append(ws)
+
+        def disconnect(self, ws: WebSocket) -> None:
+            self._connections = [c for c in self._connections if c is not ws]
+
+        async def broadcast(self, data: dict[str, Any]) -> None:
+            dead: list[WebSocket] = []
+            for ws in list(self._connections):
+                try:
+                    await ws.send_json(data)
+                except Exception:
+                    dead.append(ws)
+            for ws in dead:
+                self.disconnect(ws)
+
+    ws_manager = _WsManager()
+
     presence_service = PresenceStateService(
         settings=settings,
         product_store=product_store,
@@ -669,6 +729,7 @@ def build_dashboard_app(
         llm_client=llm_client,
         reality_context=reality_service,
     )
+    study_service = StudyService(db=product_store.db)
 
     def add_dashboard_headers(response: Response) -> Response:
         response.headers["Cache-Control"] = "no-store"
@@ -935,6 +996,39 @@ def build_dashboard_app(
             response = await call_next(request)
             return add_dashboard_headers(response)
 
+    import collections
+    import time as _time
+
+    class SimpleRateLimitMiddleware(BaseHTTPMiddleware):
+        """简单的滑动窗口速率限制：每个 IP 在指定窗口内最多 N 次请求。
+        仅针对写操作（POST/PUT/PATCH/DELETE）以及 /api/chat/stream 端点。
+        """
+        def __init__(self, app, max_requests: int = 60, window_seconds: int = 60) -> None:
+            super().__init__(app)
+            self._buckets: dict = collections.defaultdict(list)
+            self._max = max_requests
+            self._window = window_seconds
+
+        async def dispatch(self, request: Request, call_next):
+            path = request.url.path
+            method = request.method
+            if method not in {"POST", "PUT", "PATCH", "DELETE"} and path != "/api/chat/stream":
+                return await call_next(request)
+            ip = request_source_ip(request)
+            now = _time.monotonic()
+            bucket = self._buckets[ip]
+            # 清理过期记录
+            self._buckets[ip] = [t for t in bucket if now - t < self._window]
+            if len(self._buckets[ip]) >= self._max:
+                return JSONResponse(
+                    {"detail": "rate limit exceeded — try again later"},
+                    status_code=429,
+                    headers={"Retry-After": str(self._window)},
+                )
+            self._buckets[ip].append(now)
+            return await call_next(request)
+
+    app.add_middleware(SimpleRateLimitMiddleware, max_requests=120, window_seconds=60)
     app.add_middleware(DashboardSecurityMiddleware)
     if settings.dashboard_auth_enabled:
         app.add_middleware(
@@ -1194,7 +1288,17 @@ def build_dashboard_app(
                 id="memory",
                 title="记忆与上下文",
                 subtitle="长期记忆、候选、事实、关系和摘要",
-                panels=["search", "memories", "candidates", "snapshots", "facts", "relationships", "summaries", "attachments"],
+                panels=[
+                    "search",
+                    "memories",
+                    "candidates",
+                    "snapshots",
+                    "facts",
+                    "relationships",
+                    "summaries",
+                    "shared-diary",
+                    "attachments",
+                ],
             ),
             MobileDashboardGroup(
                 id="reality",
@@ -1379,7 +1483,12 @@ def build_dashboard_app(
             return RedirectResponse("/", status_code=303)
         return render_login_page(request)
 
-    @app.post("/api/login", response_model=LoginResponse)
+    @app.post(
+        "/api/login",
+        response_model=LoginResponse,
+        summary="Dashboard 登录",
+        description="使用用户名和密码进行 Dashboard 身份验证，成功后颁发会话并返回 CSRF Token。",
+    )
     async def dashboard_login_api(request: Request, body: LoginRequest) -> LoginResponse:
         username = body.username.strip()
         password = body.password
@@ -1474,21 +1583,43 @@ def build_dashboard_app(
     async def dashboard_home(request: Request) -> HTMLResponse:
         return render_dashboard_page(request)
 
-    @app.get("/api/overview", response_model=OverviewResponse)
+    @app.get(
+        "/api/overview",
+        response_model=OverviewResponse,
+        summary="系统概览",
+        description="返回当前 scope 的整体运行状态概览，包含记忆数、学习进度、性能指标等聚合数据。",
+    )
     async def overview() -> OverviewResponse:
         scope = current_scope_snapshot()
         overview_payload = product_store.get_overview(user_id=None if scope is None else scope["user_id"])
         overview_payload["active_scope_name"] = None if scope is None else scope["display_name"]
         overview_payload["active_scope_id"] = None if scope is None else scope["conversation_id"]
+
+        # 追加学习系统统计（如果已初始化）
+        try:
+            if scope is not None and study_service is not None:
+                study_stats = study_service.get_study_stats(scope["user_id"])
+                overview_payload["study"] = {
+                    "streak_days": study_stats.get("streak_days", 0),
+                    "due_today": study_stats.get("due_today", 0),
+                    "active_goals": study_stats.get("active_goals", 0),
+                    "mastered_items": study_stats.get("mastered_items", 0),
+                }
+        except Exception:
+            pass  # 学习数据非关键路径
+
         return OverviewResponse(
             active_scope=None if scope is None else ScopeSnapshotModel.model_validate(scope),
             overview=overview_payload,
             quick_links=[
+                {"tab": "study", "label": "📚 学习中心"},
                 {"tab": "search", "label": "全局搜索"},
                 {"tab": "memories", "label": "长期记忆"},
                 {"tab": "candidates", "label": "候选记忆"},
+                {"tab": "shared-diary", "label": "共享日记"},
                 {"tab": "performance", "label": "性能成本"},
                 {"tab": "errors", "label": "错误闭环"},
+                {"tab": "webchat", "label": "💬 聊天"},
             ],
             refreshed_at=iso_utc_now(),
         )
@@ -1821,12 +1952,23 @@ def build_dashboard_app(
             summary={"retrying": sum(1 for item in items if item["status"] == "retrying")},
         )
 
-    @app.get("/api/memories", response_model=PanelEnvelope)
+    @app.get(
+        "/api/memories",
+        response_model=PanelEnvelope,
+        summary="长期记忆列表",
+        description="分页查询长期记忆，支持关键词搜索及高级过滤（重要性、可信度、类型、标签、创建时间范围）。",
+    )
     async def memories(
         q: str = "",
         sort: str = "importance",
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=60),
+        memory_type: Optional[str] = None,
+        min_importance: Optional[float] = Query(None, ge=0.0, le=1.0),
+        min_confidence: Optional[float] = Query(None, ge=0.0, le=1.0),
+        tags: Optional[str] = None,
+        created_after: Optional[str] = None,
+        created_before: Optional[str] = None,
     ) -> PanelEnvelope:
         page, page_size = _normalize_page(page, page_size)
         normalized_q = _normalize_q(q)
@@ -1849,6 +1991,22 @@ def build_dashboard_app(
         if search_clause:
             clauses.append(search_clause)
             params.extend(search_params)
+        # 高级过滤条件（参数化查询，不拼接字符串）
+        if memory_type:
+            clauses.append("ltm.memory_type = ?")
+            params.append(memory_type)
+        if min_importance is not None:
+            clauses.append("ltm.importance >= ?")
+            params.append(min_importance)
+        if min_confidence is not None:
+            clauses.append("ltm.confidence >= ?")
+            params.append(min_confidence)
+        if created_after:
+            clauses.append("ltm.created_at >= ?")
+            params.append(created_after)
+        if created_before:
+            clauses.append("ltm.created_at <= ?")
+            params.append(created_before)
         rows, total = _run_paged_select(
             db=product_store.db,
             columns="ltm.*, mus.hit_count, mus.last_hit_at",
@@ -1863,6 +2021,12 @@ def build_dashboard_app(
             page_size=page_size,
         )
         items = [_serialize_memory_row(row) for row in rows]
+        # tags 过滤（在 Python 层过滤，支持逗号分隔的 OR 语义）
+        if tags:
+            tag_set = {t.strip() for t in tags.split(",") if t.strip()}
+            if tag_set:
+                items = [it for it in items if tag_set.intersection(set(it.get("tags") or []))]
+                total = len(items)
         top_hits = product_store.list_top_memory_hits(scope["user_id"], limit=8)
         return _build_panel_response(
             active_scope=scope,
@@ -1874,7 +2038,48 @@ def build_dashboard_app(
             sort=sort,
             highlights={"top_hits": top_hits},
             summary={"sort_options": list(order_map.keys())},
+            filters={
+                "memory_type": memory_type or "",
+                "min_importance": min_importance,
+                "min_confidence": min_confidence,
+                "tags": tags or "",
+                "created_after": created_after or "",
+                "created_before": created_before or "",
+            },
         )
+
+    @app.get(
+        "/api/memories/graph",
+        summary="记忆关系图",
+        description="返回最重要的 N 条长期记忆的节点和边，用于可视化记忆关系网络。纯本地计算，不调用 LLM。",
+    )
+    async def memories_graph(
+        limit: int = Query(50, ge=1, le=200),
+    ) -> JSONResponse:
+        scope = current_scope_snapshot()
+        if scope is None:
+            return JSONResponse({"nodes": [], "edges": [], "user_id": None})
+        graph = product_store.get_memory_graph(scope["user_id"], limit=limit)
+        graph["user_id"] = scope["user_id"]
+        graph["refreshed_at"] = iso_utc_now()
+        return JSONResponse(graph)
+
+    @app.get(
+        "/api/memories/health",
+        summary="记忆健康度报告",
+        description="返回记忆库的健康度评分（0-100），包含覆盖率、新鲜度、可信度、多样性分析及改进建议。",
+    )
+    async def memories_health() -> JSONResponse:
+        """记忆健康度报告（纯本地计算，不依赖 LLM）。"""
+        scope = current_scope_snapshot()
+        if scope is None:
+            return JSONResponse({"health": None, "user_id": None, "refreshed_at": iso_utc_now()})
+        health = product_store.get_memory_health_score(scope["user_id"])
+        return JSONResponse({
+            "health": health,
+            "user_id": scope["user_id"],
+            "refreshed_at": iso_utc_now(),
+        })
 
     @app.post("/api/memories/{memory_uid}/archive", response_model=ActionResponse)
     async def archive_memory(request: Request, memory_uid: str) -> ActionResponse:
@@ -1915,6 +2120,107 @@ def build_dashboard_app(
             scope=current_scope_snapshot(),
         )
         return ActionResponse(ok=True, message="长期记忆已恢复。", item_id=memory_uid)
+
+    @app.get(
+        "/api/memories/export",
+        summary="导出记忆备份",
+        description="将当前用户的所有活跃长期记忆导出为 JSON 或 Markdown 文件供下载备份。",
+    )
+    async def export_memories(
+        fmt: str = Query("json", alias="format"),
+        user_id: Optional[str] = Query(None),
+    ) -> Response:
+        """导出所有活跃记忆。format=json 返回 JSON 文件，format=markdown 返回 Markdown 文档。"""
+        scope = current_scope_snapshot()
+        resolved_user_id = user_id or (scope["user_id"] if scope else None)
+        records = product_store.export_memories(user_id=resolved_user_id, status="active")
+
+        if fmt == "markdown":
+            lines: list[str] = [
+                "# 长期记忆导出",
+                "",
+                f"导出时间：{iso_utc_now()}",
+                f"用户 ID：{resolved_user_id or '全部'}",
+                f"记忆总数：{len(records)}",
+                "",
+                "---",
+                "",
+            ]
+            for rec in records:
+                lines.append(f"## [{rec['category']}] {rec['memory_type']}")
+                lines.append("")
+                lines.append(f"**内容：** {rec['content']}")
+                lines.append("")
+                lines.append(f"- 重要性：{rec['importance']}")
+                lines.append(f"- 置信度：{rec['confidence']}")
+                tags = rec.get("tags", [])
+                if tags:
+                    lines.append(f"- 标签：{', '.join(tags)}")
+                lines.append(f"- 创建时间：{rec['created_at']}")
+                lines.append(f"- 更新时间：{rec['updated_at']}")
+                lines.append("")
+            content_str = "\n".join(lines)
+            return Response(
+                content=content_str.encode("utf-8"),
+                media_type="text/markdown; charset=utf-8",
+                headers={"Content-Disposition": "attachment; filename=\"memories_export.md\""},
+            )
+
+        # 默认 JSON 格式
+        import json as _json
+        json_bytes = _json.dumps(
+            {"exported_at": iso_utc_now(), "user_id": resolved_user_id, "count": len(records), "memories": records},
+            ensure_ascii=False,
+            indent=2,
+        ).encode("utf-8")
+        return Response(
+            content=json_bytes,
+            media_type="application/json; charset=utf-8",
+            headers={"Content-Disposition": "attachment; filename=\"memories_export.json\""},
+        )
+
+    @app.post(
+        "/api/memories/import",
+        summary="导入记忆备份",
+        description="从 JSON 备份文件批量导入长期记忆，自动跳过内容相同的已存在记忆（去重）。",
+    )
+    async def import_memories(
+        request: Request,
+        file: UploadFile = File(...),
+    ) -> JSONResponse:
+        """从 JSON 文件导入记忆，跳过 content 相同的已存在记忆。"""
+        import json as _json
+
+        scope = current_scope_snapshot()
+        if scope is None:
+            raise HTTPException(status_code=400, detail="no active scope — cannot determine target user_id")
+
+        raw = await file.read()
+        try:
+            payload = _json.loads(raw.decode("utf-8"))
+        except Exception:
+            raise HTTPException(status_code=400, detail="文件解析失败，请上传有效的 JSON 文件")
+
+        if isinstance(payload, list):
+            records = payload
+        elif isinstance(payload, dict) and "memories" in payload:
+            records = payload["memories"]
+        else:
+            raise HTTPException(status_code=400, detail="JSON 格式无效，期望列表或含 'memories' 键的对象")
+
+        if not isinstance(records, list):
+            raise HTTPException(status_code=400, detail="memories 字段必须是列表")
+
+        result = product_store.import_memories(records, user_id=scope["user_id"])
+        audit_action(
+            request,
+            action_type="memory_import",
+            target_type="long_term_memory",
+            target_id="bulk",
+            details={"imported": result["imported"], "skipped": result["skipped"], "error_count": len(result["errors"])},
+            scope=scope,
+        )
+        return JSONResponse(result)
 
     @app.get("/api/candidates", response_model=PanelEnvelope)
     async def candidates(
@@ -2509,6 +2815,67 @@ def build_dashboard_app(
                 "diary_count": len(diary),
             },
             highlights={"diary": diary[:12]},
+        )
+
+    @app.get("/api/shared-diary", response_model=PanelEnvelope)
+    async def shared_diary(
+        q: str = "",
+        entry_type: Optional[str] = None,
+        role_scope: Optional[str] = None,
+        page: int = Query(1, ge=1),
+        page_size: int = Query(20, ge=1, le=60),
+    ) -> PanelEnvelope:
+        page, page_size = _normalize_page(page, page_size)
+        normalized_q = _normalize_q(q)
+        scope = current_scope_snapshot()
+        clauses = ["1 = 1"]
+        params: list[Any] = []
+        if scope:
+            clauses.append("user_id = ?")
+            params.append(scope["user_id"])
+            clauses.append("conversation_id = ?")
+            params.append(scope["conversation_id"])
+        if entry_type:
+            clauses.append("entry_type = ?")
+            params.append(entry_type)
+        if role_scope:
+            clauses.append("role_scope = ?")
+            params.append(role_scope)
+        search_clause, search_params = _build_text_search(
+            normalized_q,
+            ["diary_uid", "local_date", "entry_type", "title", "content", "role_scope", "source", "tags_json", "metadata_json"],
+        )
+        if search_clause:
+            clauses.append(search_clause)
+            params.extend(search_params)
+        rows, total = _run_paged_select(
+            db=product_store.db,
+            columns="*",
+            from_clause=f"FROM shared_diary_entries WHERE {' AND '.join(clauses)}",
+            params=params,
+            order_by="created_at DESC, id DESC",
+            page=page,
+            page_size=page_size,
+        )
+        items = [_serialize_shared_diary_row(row) for row in rows]
+        unique_dates = sorted({item["local_date"] for item in items if item.get("local_date")}, reverse=True)
+        type_counts: dict[str, int] = {}
+        for item in items:
+            item_type = str(item.get("entry_type") or "unknown")
+            type_counts[item_type] = type_counts.get(item_type, 0) + 1
+        return _build_panel_response(
+            active_scope=scope,
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            q=normalized_q,
+            filters={"entry_type": entry_type or "", "role_scope": role_scope or ""},
+            summary={
+                "visible_dates": unique_dates[:8],
+                "visible_type_counts": type_counts,
+                "active_scope_name": None if scope is None else scope["display_name"],
+            },
         )
 
     @app.patch("/api/companion-day", response_model=ActionResponse)
@@ -3297,6 +3664,8 @@ def build_dashboard_app(
         artifact_type: Optional[str] = None,
         namespace: Optional[str] = None,
         dimension: Optional[str] = None,
+        entry_type: Optional[str] = None,
+        role_scope: Optional[str] = None,
     ):
         key = panel_key.strip().lower().replace("_", "-")
         if key == "overview":
@@ -3335,6 +3704,14 @@ def build_dashboard_app(
             return await presence()
         if key == "companion-day":
             return await companion_day()
+        if key == "shared-diary":
+            return await shared_diary(
+                q=q,
+                entry_type=entry_type,
+                role_scope=role_scope,
+                page=page,
+                page_size=page_size,
+            )
         if key == "reality-context":
             return await reality_context()
         if key == "facts":
@@ -3346,6 +3723,135 @@ def build_dashboard_app(
         if key == "modes":
             return await modes()
         raise HTTPException(status_code=404, detail=f"unknown dashboard panel: {panel_key}")
+
+    @app.get("/api/study/sessions")
+    async def study_sessions(
+        goal_uid: Optional[str] = None,
+        limit: int = Query(20, ge=1, le=100),
+    ) -> dict:
+        """列出学习会话历史。"""
+        scope = current_scope_snapshot()
+        if scope is None:
+            return {"sessions": [], "refreshed_at": iso_utc_now()}
+        sessions = study_service.list_sessions(scope["user_id"], goal_uid=goal_uid, limit=limit)
+        return {"sessions": sessions, "total": len(sessions), "refreshed_at": iso_utc_now()}
+
+    @app.get("/api/study/sessions/active")
+    async def study_active_session() -> dict:
+        """获取当前活跃学习会话（用于 Dashboard 显示计时器）。
+
+        返回：
+        - session: 活跃会话 dict，或 null（无进行中会话）
+        - active: bool 是否有活跃会话
+        - refreshed_at: str
+        """
+        scope = current_scope_snapshot()
+        if scope is None:
+            return {"session": None, "active": False, "refreshed_at": iso_utc_now()}
+        session = study_service.get_active_session(scope["user_id"])
+        return {
+            "session": session,
+            "active": session is not None,
+            "refreshed_at": iso_utc_now(),
+        }
+
+    @app.get("/api/study/summary")
+    async def study_daily_summary() -> dict:
+        """返回当日学习摘要（纯本地计算）。"""
+        scope = current_scope_snapshot()
+        if scope is None:
+            return {"summary": {}, "text": "", "refreshed_at": iso_utc_now()}
+        summary = study_service.generate_daily_summary(scope["user_id"])
+        text = study_service.get_review_summary_text(scope["user_id"])
+        return {"summary": summary, "text": text, "refreshed_at": iso_utc_now()}
+
+    @app.get("/api/study/achievements")
+    async def study_achievements() -> dict:
+        """返回用户的成就列表（含是否已解锁）。"""
+        scope = current_scope_snapshot()
+        if scope is None:
+            return {"achievements": [], "refreshed_at": iso_utc_now()}
+        achievements = study_service.get_achievements(scope["user_id"])
+        unlocked_count = sum(1 for a in achievements if a.get("unlocked"))
+        return {
+            "achievements": achievements,
+            "unlocked_count": unlocked_count,
+            "total_count": len(achievements),
+            "refreshed_at": iso_utc_now(),
+        }
+
+    class WebChatRequest(BaseModel):
+        content: str = ""
+        display_name: str = "用户"
+
+    @app.websocket("/ws/notifications")
+    async def ws_notifications(websocket: WebSocket) -> None:
+        """WebSocket 实时通知端点。
+
+        连接后接收以下事件类型：
+        - type=ping: 心跳
+        - type=study_reminder: 学习复习提醒
+        - type=proactive: 主动消息通知
+        - type=candidate: 新候选记忆通知
+        """
+        if settings.dashboard_auth_enabled:
+            session_val = websocket.session if hasattr(websocket, "session") else {}
+            if not session_val.get("dashboard_authenticated"):
+                await websocket.close(code=1008)
+                return
+        await ws_manager.connect(websocket)
+        try:
+            await websocket.send_json({"type": "connected", "message": "Study Senpai 通知频道已连接"})
+            while True:
+                data = await websocket.receive_text()
+                if data == "ping":
+                    await websocket.send_json({"type": "pong"})
+        except WebSocketDisconnect:
+            ws_manager.disconnect(websocket)
+
+    @app.post("/api/notifications/broadcast", response_model=ActionResponse)
+    async def broadcast_notification(request: Request, body: dict) -> ActionResponse:
+        """向所有连接的 Dashboard 广播一条通知消息（仅供内部/调试使用）。"""
+        event_type = body.get("type", "info")
+        message = str(body.get("message", ""))[:500]
+        await ws_manager.broadcast({"type": event_type, "message": message})
+        return ActionResponse(ok=True, message=f"广播给 {len(ws_manager._connections)} 个连接")
+
+    @app.post(
+        "/api/chat/stream",
+        summary="Web 聊天流式对话",
+        description="Dashboard 内置 Web Chat 端点，通过 SSE 流式返回 companion 回复，需要 Dashboard 会话认证。",
+    )
+    async def web_chat_stream(request: Request, body: WebChatRequest) -> StreamingResponse:
+        """Dashboard 内置 Web Chat 端点，复用 companion service，需要 Dashboard 会话认证。"""
+        scope_snapshot = current_scope_snapshot()
+        if scope_snapshot is None:
+            raise HTTPException(status_code=422, detail="no active scope — select a scope first")
+        scope = conversation_scope_from_snapshot(scope_snapshot)
+
+        if not body.content.strip():
+            raise HTTPException(status_code=422, detail="content is required")
+
+        async def event_source():
+            if companion_service is None:
+                yield mobile_sse({"type": "error", "text": "companion service unavailable"})
+                return
+            try:
+                async for event in companion_service.stream_mobile_reply(
+                    scope=scope,
+                    user_content=body.content,
+                    platform_message_id=None,
+                    author_id="dashboard-user",
+                    display_name=body.display_name,
+                    attachment_insights=[],
+                    tool_overrides={},
+                    metadata={"source": "web_chat", "dashboard": True},
+                ):
+                    yield mobile_sse(event)
+            except Exception as exc:
+                yield mobile_sse({"type": "error", "text": str(exc)})
+
+        return StreamingResponse(event_source(), media_type="text/event-stream")
 
     @app.post("/mobile/dashboard/scopes/active", response_model=ActionResponse)
     async def mobile_update_active_scope(request: Request, body: ScopeUpdateRequest) -> ActionResponse:
@@ -3438,5 +3944,341 @@ def build_dashboard_app(
     @app.post("/mobile/dashboard/audits/{audit_uid}/undo", response_model=ActionResponse)
     async def mobile_undo_audit_action(request: Request, audit_uid: str) -> ActionResponse:
         return await undo_audit_action(request, audit_uid)
+
+    # -----------------------------------------------------------------------
+    # Study Goals & Spaced Review API（学习目标追踪与间隔复习）
+    # -----------------------------------------------------------------------
+
+    class StudyGoalCreateRequest(BaseModel):
+        user_id: str
+        conversation_id: str
+        title: str
+        subject: Optional[str] = None
+        target_date: Optional[str] = None
+        description: Optional[str] = None
+
+    class StudyGoalPatchRequest(BaseModel):
+        title: Optional[str] = None
+        description: Optional[str] = None
+        subject: Optional[str] = None
+        target_date: Optional[str] = None
+        status: Optional[str] = None
+        progress_pct: Optional[int] = Field(default=None, ge=0, le=100)
+
+    class ReviewItemCreateRequest(BaseModel):
+        user_id: str
+        front: str
+        back: str
+        subject: Optional[str] = None
+        goal_uid: Optional[str] = None
+        tags: List[str] = Field(default_factory=list)
+
+    class ReviewResultRequest(BaseModel):
+        quality: int = Field(..., ge=0, le=5)
+
+    def _get_study_user_id(request: Request) -> str:
+        """从 session 或 query 参数获取 user_id，用于 study 端点认证时的 scope 推断。"""
+        scope = current_scope_snapshot()
+        if scope:
+            return str(scope["user_id"])
+        return ""
+
+    @app.get(
+        "/api/study/goals",
+        summary="学习目标列表",
+        description="列出当前 scope 用户的学习目标，可按状态（active/completed/archived）过滤。",
+    )
+    async def list_study_goals(
+        status: str = "active",
+    ) -> dict:
+        """列出当前 scope 用户的学习目标。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        goals = study_service.list_goals(scope["user_id"], status=status)
+        return {"goals": goals, "total": len(goals)}
+
+    @app.post(
+        "/api/study/goals",
+        summary="创建学习目标",
+        description="创建新的学习目标，支持设置科目、目标日期和描述信息。",
+    )
+    async def create_study_goal(request: Request, body: StudyGoalCreateRequest) -> dict:
+        """创建新学习目标。"""
+        goal = study_service.create_goal(
+            user_id=body.user_id,
+            conv_id=body.conversation_id,
+            title=body.title,
+            subject=body.subject,
+            target_date=body.target_date,
+            description=body.description,
+        )
+        return {"ok": True, "goal": goal}
+
+    @app.patch("/api/study/goals/{goal_uid}")
+    async def patch_study_goal(request: Request, goal_uid: str, body: StudyGoalPatchRequest) -> dict:
+        """更新学习目标的进度或状态。"""
+        fields: dict = {}
+        if body.title is not None:
+            fields["title"] = body.title
+        if body.description is not None:
+            fields["description"] = body.description
+        if body.subject is not None:
+            fields["subject"] = body.subject
+        if body.target_date is not None:
+            fields["target_date"] = body.target_date
+        if body.status is not None:
+            fields["status"] = body.status
+        if body.progress_pct is not None:
+            fields["progress_pct"] = body.progress_pct
+        if not fields:
+            raise HTTPException(status_code=400, detail="no fields to update")
+        updated = study_service.update_goal(goal_uid, fields)
+        if not updated:
+            raise HTTPException(status_code=404, detail="goal not found")
+        return {"ok": True, "goal_uid": goal_uid}
+
+    @app.get(
+        "/api/study/review",
+        summary="获取到期复习卡片",
+        description="返回当前用户今日到期的间隔复习卡片列表，按 SM-2 算法排序。",
+    )
+    async def get_due_review_items(limit: int = Query(20, ge=1, le=100)) -> dict:
+        """获取今日到期的复习卡片列表。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        items = study_service.get_due_items(scope["user_id"], limit=limit)
+        return {"items": items, "total": len(items)}
+
+    @app.post("/api/study/review/items")
+    async def create_review_item(request: Request, body: ReviewItemCreateRequest) -> dict:
+        """添加一张间隔复习卡片。"""
+        item = study_service.add_review_item(
+            user_id=body.user_id,
+            front=body.front,
+            back=body.back,
+            subject=body.subject,
+            goal_uid=body.goal_uid,
+            tags=body.tags,
+        )
+        return {"ok": True, "item": item}
+
+    @app.post("/api/study/review/items/{item_uid}/result")
+    async def record_review_result(
+        request: Request,
+        item_uid: str,
+        body: ReviewResultRequest,
+    ) -> dict:
+        """记录一次复习结果（quality 0-5），更新 SM-2 参数。"""
+        updated = study_service.record_review_result(item_uid, body.quality)
+        if updated is None:
+            raise HTTPException(status_code=404, detail="review item not found")
+        return {"ok": True, "item": updated}
+
+    @app.get(
+        "/api/study/stats",
+        summary="学习统计概览",
+        description="返回当前用户的学习统计数据：连续打卡天数、今日到期卡片、专注时长、已掌握条目数等。",
+    )
+    async def get_study_stats() -> dict:
+        """获取用户的学习统计：连续天数、到期卡片数、今日专注时长等。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        stats = study_service.get_study_stats(scope["user_id"])
+        return stats
+
+    @app.get("/api/study/summary")
+    async def get_study_summary(text: bool = Query(False)) -> dict:
+        """获取当日学习摘要。
+
+        - 返回 JSON 摘要（reviewed_today, goals_updated, streak_days, due_tomorrow,
+          session_minutes, achievements）。
+        - 若携带 ?text=true，则额外返回人类可读的 summary_text 字段。
+        """
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        summary = study_service.generate_daily_summary(scope["user_id"])
+        if text:
+            summary["summary_text"] = study_service.get_review_summary_text(scope["user_id"])
+        return summary
+
+    @app.get("/api/study/goals/{goal_uid}/plan")
+    async def get_study_goal_plan(
+        goal_uid: str,
+        days: Optional[int] = Query(None, ge=0, description="距离目标日期的天数（可选，优先于目标中的 target_date）"),
+    ) -> dict:
+        """获取指定学习目标的每日/每周学习计划建议（纯本地计算，不依赖 LLM）。
+
+        返回：
+        - plan: 包含 urgency, daily_minutes, cards_per_day, focus_areas, weekly_checkpoints
+        - refreshed_at: 计算时间戳
+        """
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        goal = study_service.get_goal(goal_uid)
+        if goal is None:
+            raise HTTPException(status_code=404, detail="goal not found")
+        plan = study_service.generate_study_plan(
+            user_id=scope["user_id"],
+            goal_uid=goal_uid,
+            days_until_target=days,
+        )
+        return {"plan": plan, "refreshed_at": iso_utc_now()}
+
+    @app.post("/api/study/goals/{goal_uid}/start-session")
+    async def start_study_session_for_goal(
+        request: Request,
+        goal_uid: str,
+    ) -> dict:
+        """为指定目标开始一次学习会话，返回 session_uid 及开始时间。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        goal = study_service.get_goal(goal_uid)
+        if goal is None:
+            raise HTTPException(status_code=404, detail="goal not found")
+        session_uid = study_service.start_session(
+            user_id=scope["user_id"],
+            goal_uid=goal_uid,
+        )
+        session = study_service.get_session(session_uid)
+        return {
+            "ok": True,
+            "session_uid": session_uid,
+            "goal_uid": goal_uid,
+            "started_at": session["started_at"] if session else iso_utc_now(),
+        }
+
+    class EndSessionRequest(BaseModel):
+        focus_minutes: int = Field(..., ge=0)
+        items_reviewed: int = Field(default=0, ge=0)
+        notes: Optional[str] = None
+
+    @app.post("/api/study/sessions/{session_uid}/end")
+    async def end_study_session(
+        request: Request,
+        session_uid: str,
+        body: EndSessionRequest,
+    ) -> dict:
+        """结束一次学习会话并记录专注时长和复习卡片数。
+
+        body：
+        - focus_minutes: 专注时长（分钟，必填）
+        - items_reviewed: 复习卡片数（默认 0）
+        - notes: 备注（可选）
+        """
+        success = study_service.end_session(
+            session_uid=session_uid,
+            focus_minutes=body.focus_minutes,
+            items_reviewed=body.items_reviewed,
+            notes=body.notes,
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="session not found or already ended")
+        session = study_service.get_session(session_uid)
+        return {"ok": True, "session": session}
+
+    # ------------------------------------------------------------------
+    # Anki TSV 导出端点
+    # ------------------------------------------------------------------
+
+    @app.get(
+        "/api/study/review/export-anki",
+        summary="导出 Anki TSV",
+        description="将当前用户的复习卡片导出为 Anki Basic deck 兼容的 TSV 文件（front\\tback\\ttags）。",
+    )
+    async def export_anki_tsv(
+        goal_uid: Optional[str] = Query(None, description="可选：只导出某个目标下的卡片"),
+    ) -> Response:
+        """以 TSV 附件形式下载复习卡片（Anki 格式）。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        tsv_content = study_service.export_to_anki_tsv(
+            user_id=scope["user_id"],
+            goal_uid=goal_uid,
+        )
+        return Response(
+            content=tsv_content.encode("utf-8"),
+            media_type="text/tab-separated-values; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="study-review.tsv"'},
+        )
+
+    # ------------------------------------------------------------------
+    # Anki TSV 导入端点
+    # ------------------------------------------------------------------
+
+    @app.post(
+        "/api/study/review/import-anki",
+        summary="导入 Anki TSV",
+        description="上传 Anki TSV 文件（multipart/form-data），批量创建复习卡片。",
+    )
+    async def import_anki_tsv(
+        request: Request,
+        file: UploadFile = File(..., description="TSV 文件（Anki Basic 格式）"),
+        goal_uid: Optional[str] = Query(None, description="可选：将卡片关联到某个目标"),
+    ) -> dict:
+        """从上传的 TSV 文件批量导入复习卡片。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+
+        # 文件大小预检（读取全部内容，服务端再次做大小限制）
+        MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+        raw_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(raw_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="上传文件超过 10MB 限制")
+
+        try:
+            tsv_content = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=422, detail="文件编码错误，仅支持 UTF-8")
+
+        result = study_service.import_from_anki_tsv(
+            user_id=scope["user_id"],
+            tsv_content=tsv_content,
+            goal_uid=goal_uid,
+        )
+        return {"ok": True, **result}
+
+    # ------------------------------------------------------------------
+    # 学习热力图端点
+    # ------------------------------------------------------------------
+
+    @app.get(
+        "/api/study/heatmap",
+        summary="学习热力图数据",
+        description="返回过去 N 天每日学习会话数和专注时长，用于绘制 GitHub 风格热力图。",
+    )
+    async def get_study_heatmap(
+        days: int = Query(90, ge=1, le=365, description="返回过去多少天的数据"),
+    ) -> dict:
+        """获取学习热力图数据（date/count/minutes）。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        data = study_service.get_heatmap_data(scope["user_id"], days=days)
+        return {"data": data, "days": days, "refreshed_at": iso_utc_now()}
+
+    # ------------------------------------------------------------------
+    # 学科分布端点
+    # ------------------------------------------------------------------
+
+    @app.get(
+        "/api/study/distribution",
+        summary="复习卡片学科分布",
+        description="返回各学科复习卡片数量及掌握情况（repetitions >= 3 视为掌握）。",
+    )
+    async def get_study_distribution() -> dict:
+        """获取学科分布数据（subject/count/mastered）。"""
+        scope = current_scope_snapshot()
+        if not scope:
+            raise HTTPException(status_code=400, detail="no active scope")
+        distribution = study_service.get_subject_distribution(scope["user_id"])
+        return {"distribution": distribution, "refreshed_at": iso_utc_now()}
 
     return app

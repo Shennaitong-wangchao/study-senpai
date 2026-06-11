@@ -1,33 +1,119 @@
-# 沈知微长期陪伴系统使用手册 / User Guide
+# Study Senpai 使用手册 / User Guide
 
 ## 中文优先
 
-这份说明按“你一个人长期使用”的真实场景来写。
+> **v0.2.0 新功能速查** — [Web Chat](#web-chat-浏览器聊天) · [学习系统](#学习系统) · [Discord 命令](#discord-命令) · [切换人格](#切换人格) · [记忆导出](#记忆导出导入)
+
+这份说明按”你一个人长期使用”的真实场景来写。
 
 重点不是把她当作普通问答机器人跑起来，而是把下面这些能力一起跑顺：
 
-- 私聊长期聊天
-- 稳定人格与不同场景切换
+- 私聊长期聊天（Discord 或 浏览器）
+- 稳定人格与不同场景切换（YAML 人格切换）
 - 长期记忆、候选记忆、摘要连续性
 - 图片 / 语音 / 文档输入
-- 学习模式
+- 学习目标管理和 SM-2 间隔复习
 - 搜索型回复
 - 绘图型回复
 - 主动消息
 - Dashboard 观察、记忆审核、任务和错误排查
 
-如果你只想知道最短启动路径，可以直接先看：
+---
 
-- 第 2 节：环境变量
-- 第 3 节：安装与启动
-- 第 5 节：聊天内可用命令
-- 第 10 节：如何验证功能真的存在
+## Web Chat（浏览器聊天）
 
-文档分工也建议一起记住：
+不需要 Discord！打开 Dashboard 后点击 **💬 聊天** 标签页：
 
-- `README.md` 只保留最短入口和脚本索引
-- 这份 `USER_GUIDE.md` 放启动、配置、聊天与 Dashboard 使用细节
-- `docs/OPERATIONS_RUNBOOK.md` 专门放 log rotation、DB vacuum、备份恢复、容量治理和巡检
+1. 点”加载历史”查看历史对话
+2. 输入消息，Ctrl+Enter 发送
+3. AI 回复支持 Markdown 渲染（代码块、加粗、列表等）
+
+---
+
+## 学习系统
+
+### Dashboard 学习面板
+
+点击 **📚 学习** 标签页：
+- **学习目标**：创建目标、设置截止日期、追踪进度
+- **今日复习**：SM-2 算法到期卡片，一键评分（😰 忘了 / 😅 模糊 / 😊 记住 / 🎯 完美）
+- **统计卡片**：streak 连续天数、今日到期、已掌握、活跃目标
+
+### API 直接操作
+
+```bash
+# 查看学习统计
+curl http://localhost:8099/api/study/stats
+
+# 今日到期卡片
+curl http://localhost:8099/api/study/review
+
+# 创建学习目标
+curl -X POST http://localhost:8099/api/study/goals \
+  -H “Content-Type: application/json” \
+  -d '{“title”: “高考数学”, “subject”: “数学”, “target_date”: “2026-06-07”}'
+
+# 添加复习卡片
+curl -X POST http://localhost:8099/api/study/review/items \
+  -d '{“front”: “导数几何意义？”, “back”: “切线斜率”}'
+```
+
+---
+
+## Discord 命令
+
+在 Discord DM 中输入以下命令（无需 @mention）：
+
+| 命令 | 说明 |
+|------|------|
+| `/help` | 查看所有命令 |
+| `/stats` | 学习统计（streak、今日复习等） |
+| `/goals` | 目标列表 |
+| `/review` | 今日到期卡片 |
+| `/plan <目标>` | 目标学习计划建议 |
+| `/start [目标]` | 开始计时学习会话 |
+| `/done <分钟>` | 结束会话并记录时长 |
+| `/addgoal 标题 \| 学科` | 添加目标 |
+| `/addcard 问 \| 答` | 添加复习卡片 |
+
+---
+
+## 切换人格
+
+在 `.env` 中设置 `PERSONA_FILE`，重启生效：
+
+```bash
+# 英语教练
+PERSONA_FILE=personas/english_coach.yaml
+
+# 代码导师
+PERSONA_FILE=personas/code_mentor.yaml
+
+# 查看所有可用人格
+python3 -c “from src.persona.registry import list_available_personas; print(list_available_personas())”
+```
+
+详见 [personas/PERSONAS.md](personas/PERSONAS.md)。
+
+---
+
+## 记忆导出/导入
+
+```bash
+# 导出为 JSON（跨实例迁移）
+curl http://localhost:8099/api/memories/export?format=json > backup.json
+
+# 导出为 Markdown（人类可读）
+curl http://localhost:8099/api/memories/export?format=markdown > memories.md
+
+# 导入备份
+curl -X POST http://localhost:8099/api/memories/import \
+  -F “file=@backup.json”
+```
+
+---
+
+
 
 ---
 

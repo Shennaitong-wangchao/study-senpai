@@ -979,6 +979,12 @@ def verify_dashboard_endpoints(
     )
     if not diary_entries or not any(item["entry_type"] == "voice_input" for item in diary_entries):
         raise AssertionError(f"shared diary did not record day/voice entries: {diary_entries}")
+    shared_diary_payload = client.get("/api/shared-diary?q=voice").json()
+    assert_panel_envelope(shared_diary_payload, "shared diary endpoint")
+    if not shared_diary_payload["items"] or not any(item["entry_type"] == "voice_input" for item in shared_diary_payload["items"]):
+        raise AssertionError(f"shared diary endpoint did not expose voice diary entries: {shared_diary_payload}")
+    mobile_shared_diary_payload = client.get("/mobile/dashboard/shared-diary?q=voice").json()
+    assert_panel_envelope(mobile_shared_diary_payload, "mobile shared diary endpoint")
     after_day_long_term_count = product_store.db.fetchone("SELECT COUNT(*) AS count FROM long_term_memories")["count"]
     if after_day_long_term_count != before_day_long_term_count:
         raise AssertionError("companion day engine wrote role daily events into long_term_memories")
@@ -1200,6 +1206,7 @@ def verify_dashboard_endpoints(
     proactive_payload = client.get("/api/proactive").json()
     presence_payload = client.get("/api/presence").json()
     reality_payload = client.get("/api/reality-context").json()
+    shared_diary_payload = client.get("/api/shared-diary").json()
     performance_payload = client.get("/api/performance").json()
     search_payload = client.get("/api/search?q=跑步").json()
     snapshots_payload = client.get("/api/snapshots").json()
@@ -1216,6 +1223,7 @@ def verify_dashboard_endpoints(
         "proactive": proactive_payload,
         "presence": presence_payload,
         "reality": reality_payload,
+        "shared diary": shared_diary_payload,
         "snapshots": snapshots_payload,
     }.items():
         assert_panel_envelope(payload, f"{label} endpoint")
@@ -1236,6 +1244,8 @@ def verify_dashboard_endpoints(
         raise AssertionError(f"errors endpoint missing status summary: {errors_payload}")
     if not presence_payload["items"] or presence_payload["items"][0]["loop_uid"] != "loop_seed_running":
         raise AssertionError(f"presence endpoint did not expose open-loop ledger: {presence_payload}")
+    if not shared_diary_payload["items"]:
+        raise AssertionError("shared diary endpoint did not expose companion-day diary entries")
     presence_update = client.post(
         "/api/presence",
         json={"current_scene_label": "刚把灯压低一点，准备陪他收尾", "note": "verify manual update"},
@@ -1491,6 +1501,8 @@ def verify_proactive_preferences_cadence_and_context(
         enabled=True,
         source="verify",
     )
+    local_today = datetime.now(ZoneInfo(active_settings.bot_timezone)).replace(hour=8, minute=0, second=0, microsecond=0)
+    today_sent_base = local_today.astimezone(timezone.utc)
     for index in range(4):
         uid = product_store.create_proactive_message(
             user_id=scope.user_id,
@@ -1499,9 +1511,10 @@ def verify_proactive_preferences_cadence_and_context(
             trigger_type="verify_daily_limit",
             opening_text=f"verify daily limit {index}",
         )
+        sent_at = (today_sent_base + timedelta(minutes=index)).isoformat()
         product_store.db.execute(
             "UPDATE proactive_messages SET status = 'responded', sent_at = ?, updated_at = ? WHERE proactive_uid = ?",
-            ((datetime.now(timezone.utc) - timedelta(minutes=200 + index)).isoformat(), iso_utc_now(), uid),
+            (sent_at, iso_utc_now(), uid),
         )
     daily_limited = asyncio.run(service.scan_and_send(client))  # type: ignore[arg-type]
     if daily_limited.get("sent") != 0 or daily_limited.get("skipped_daily_limit", 0) < 1:

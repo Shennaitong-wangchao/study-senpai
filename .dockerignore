@@ -1,0 +1,38 @@
+# 数据和密钥（绝对不能进镜像）
+.env
+.env.*
+data/
+logs/
+secrets/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# 开发工具
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Git
+.git/
+.gitignore
+
+# iOS
+ios/
+
+# 文档和非运行时文件
+docs/
+tests/
+scripts/
+tmp/
+deploy/
+*.md
+!src/
+!personas/
+
+# macOS
+.DS_Store
