@@ -11,7 +11,7 @@
 [![FastAPI](https://img.shields.io/badge/dashboard-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
 [![Discord](https://img.shields.io/badge/runtime-Discord-5865F2.svg)](https://discord.com/)
 [![iOS](https://img.shields.io/badge/client-iOS%20SwiftUI-000000.svg)](ios/Lover/)
-[![Tests](https://img.shields.io/badge/tests-195%20passing-brightgreen.svg)](#开发与测试)
+[![Tests](https://img.shields.io/badge/tests-332%20passing-brightgreen.svg)](#开发与测试)
 
 [English](#english-fallback) · [快速开始](#快速开始) · [功能特性](#功能特性) · [人格系统](#人格系统) · [架构](#架构) · [文档](#文档) · [贡献](#贡献)
 
@@ -33,12 +33,15 @@ Study Senpai 是一个**可自托管的 AI 学习陪伴系统**。它在本地�
 |------|------|
 | **长期记忆** | 自动提取会话记忆，按重要性分层存储，跨会话持续记住用户 |
 | **主动关怀** | 定时主动发起关心消息，支持深夜安静模式和节奏管控 |
-| **学习目标** | 创建学习目标，追踪进度，生成学习报告 |
-| **间隔复习** | SM-2 算法闪卡系统，科学安排复习时间 |
+| **学习目标** | 创建学习目标，追踪进度，生成 AI 学习计划（紧迫度自动计算）|
+| **间隔复习** | SM-2 算法闪卡系统，Anki TSV 格式导入/导出 |
 | **多入口** | Discord Bot、Web Dashboard、iOS App、Mobile API 四端同步 |
-| **YAML 人格** | 通过 YAML 定义完整人格，支持多人格注册表 |
-| **记忆治理** | Dashboard 可审核候选记忆、导出备份、调整保留策略 |
+| **YAML 人格** | YAML 定义完整人格，6 个内置，社区可贡献更多 |
+| **成就系统** | 13 个学习成就（streak/掌握/目标/时长）|
+| **记忆治理** | 导出备份、高级过滤、健康度评分、关系图谱 |
+| **可视化数据** | 热力图、学科分布、记忆图谱（节点+边）|
 | **现实感知** | 接入天气、日历，让 AI 的发言有真实时间和场景依据 |
+| **WebSocket** | Dashboard 实时通知推送，toast 提醒 |
 | **附件理解** | 支持 PDF、Word、图片、音频文件分析 |
 
 ### 运行时
@@ -71,7 +74,7 @@ Study Senpai 是一个**可自托管的 AI 学习陪伴系统**。它在本地�
 
 ```bash
 # 克隆仓库
-git clone https://github.com/username/study-senpai.git
+git clone https://github.com/Shennaitong-wangchao/study-senpai.git
 cd study-senpai
 
 # 创建虚拟环境
@@ -487,7 +490,7 @@ Study Senpai is a **self-hosted, local-first AI companion framework** for learni
 **Quick start:**
 
 ```bash
-git clone https://github.com/username/study-senpai.git && cd study-senpai
+git clone https://github.com/Shennaitong-wangchao/study-senpai.git && cd study-senpai
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env  # set LLM_API_KEY and LLM_MODEL

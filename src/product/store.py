@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 import uuid
 from collections import Counter, deque
@@ -2144,6 +2145,171 @@ class ProductStore:
                     )
 
         return {"nodes": nodes, "edges": edges}
+
+    def get_memory_health_score(self, user_id: str) -> dict[str, Any]:
+        """计算记忆库的健康度评分（0-100），包含详细分析。
+
+        评分维度：
+        - coverage: 记忆类型覆盖率（10 种 type 各 10 分）
+        - freshness: 近 30 天有更新的记忆占比
+        - confidence: 平均可信度 × 100
+        - diversity: 不同 category 的多样性（Shannon entropy），normalize 到 0-100
+
+        返回：
+        {
+            "overall": 75,
+            "coverage": 80,
+            "freshness": 70,
+            "confidence": 82,
+            "diversity": 68,
+            "total_memories": 45,
+            "active_memories": 40,
+            "stale_memories": 5,
+            "top_categories": [{"category": "study", "count": 15}, ...],
+            "type_distribution": {"preference": 8, "personal_fact": 12, ...},
+            "recommendations": ["建议增加情感支持类记忆", ...],
+        }
+        """
+        from datetime import datetime, timezone
+
+        # 拉取所有 active 记忆（不限数量，用于统计）
+        rows = self.db.fetchall(
+            """
+            SELECT memory_type, category, confidence, updated_at
+            FROM long_term_memories
+            WHERE user_id = ? AND status = 'active'
+            """,
+            (user_id,),
+        )
+
+        total_memories = len(rows)
+
+        # 零记忆边界处理
+        if total_memories == 0:
+            return {
+                "overall": 0,
+                "coverage": 0,
+                "freshness": 0,
+                "confidence": 0,
+                "diversity": 0,
+                "total_memories": 0,
+                "active_memories": 0,
+                "stale_memories": 0,
+                "top_categories": [],
+                "type_distribution": {},
+                "recommendations": [
+                    "记忆库为空，建议开始与 AI 对话以积累记忆",
+                    "尝试分享个人偏好和习惯以丰富记忆库",
+                ],
+            }
+
+        # 所有已知记忆类型（10 种）
+        KNOWN_TYPES = {
+            "preference",
+            "personal_fact",
+            "relationship",
+            "experience",
+            "goal",
+            "habit",
+            "emotional",
+            "knowledge",
+            "schedule",
+            "imported",
+        }
+
+        now_utc = datetime.now(timezone.utc)
+        cutoff_30d = (now_utc - timedelta(days=30)).isoformat()
+        cutoff_90d = (now_utc - timedelta(days=90)).isoformat()
+
+        # 统计各维度
+        type_counter: Counter = Counter()
+        category_counter: Counter = Counter()
+        confidence_sum = 0.0
+        fresh_count = 0  # 近 30 天有更新
+        stale_count = 0  # 超 90 天未更新
+
+        for row in rows:
+            mem_type = str(row["memory_type"] or "")
+            category = str(row["category"] or "")
+            conf = float(row["confidence"] or 0.0)
+            updated_at = str(row["updated_at"] or "")
+
+            type_counter[mem_type] += 1
+            if category:
+                category_counter[category] += 1
+            confidence_sum += conf
+
+            if updated_at >= cutoff_30d:
+                fresh_count += 1
+            if updated_at < cutoff_90d:
+                stale_count += 1
+
+        # --- coverage（覆盖率）---
+        # 统计出现在 KNOWN_TYPES 中的类型数量，每种 10 分，上限 100
+        covered_types = sum(1 for t in KNOWN_TYPES if type_counter.get(t, 0) > 0)
+        coverage = min(100, covered_types * 10)
+
+        # --- freshness（新鲜度）---
+        freshness = round(fresh_count / total_memories * 100)
+
+        # --- confidence（可信度）---
+        avg_confidence = confidence_sum / total_memories
+        confidence_score = round(avg_confidence * 100)
+
+        # --- diversity（Shannon entropy normalize 到 0-100）---
+        if len(category_counter) <= 1:
+            diversity = 0
+        else:
+            total_cat = sum(category_counter.values())
+            entropy = -sum(
+                (p / total_cat) * math.log2(p / total_cat)
+                for p in category_counter.values()
+                if p > 0
+            )
+            # 最大熵 = log2(N 个 category)
+            max_entropy = math.log2(len(category_counter))
+            diversity = round((entropy / max_entropy) * 100) if max_entropy > 0 else 100
+
+        # --- overall（综合得分）---
+        overall = round((coverage + freshness + confidence_score + diversity) / 4)
+
+        # --- top_categories（前 5 个 category）---
+        top_categories = [
+            {"category": cat, "count": cnt}
+            for cat, cnt in category_counter.most_common(5)
+        ]
+
+        # --- type_distribution（各类型分布）---
+        type_distribution = dict(type_counter)
+
+        # --- recommendations（最多 3 条，基于规则）---
+        recommendations: list[str] = []
+        if freshness < 50:
+            recommendations.append("记忆库较陈旧，建议近期多聊天以刷新记忆")
+        if coverage < 50:
+            recommendations.append("记忆类型覆盖不足，建议丰富对话内容（如分享情感、目标、习惯等）")
+        if confidence_score < 60:
+            recommendations.append("整体记忆置信度较低，建议确认并更新不准确的记忆条目")
+        if diversity < 40 and not recommendations:
+            recommendations.append("记忆 category 多样性不足，建议拓展话题范围")
+        if not type_counter.get("emotional"):
+            if len(recommendations) < 3:
+                recommendations.append("建议增加情感支持类记忆（emotional 类型）")
+        recommendations = recommendations[:3]
+
+        return {
+            "overall": overall,
+            "coverage": coverage,
+            "freshness": freshness,
+            "confidence": confidence_score,
+            "diversity": diversity,
+            "total_memories": total_memories,
+            "active_memories": total_memories,
+            "stale_memories": stale_count,
+            "top_categories": top_categories,
+            "type_distribution": type_distribution,
+            "recommendations": recommendations,
+        }
 
     def list_long_term_memories(self, *, user_id: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
         params: list[Any] = []

@@ -346,6 +346,23 @@ class StudyService:
         )
         return (cursor.rowcount or 0) > 0
 
+    def get_active_session(self, user_id: str) -> dict[str, Any] | None:
+        """获取用户当前进行中的学习会话（ended_at IS NULL）。
+
+        若存在多个未结束的会话，返回最近开始的那一个。
+        不存在则返回 None。
+        """
+        row = self.db.fetchone(
+            """
+            SELECT * FROM study_sessions
+            WHERE user_id = ? AND ended_at IS NULL
+            ORDER BY started_at DESC
+            LIMIT 1
+            """,
+            (user_id,),
+        )
+        return self._session_from_row(row) if row else None
+
     def get_session(self, session_uid: str) -> dict[str, Any] | None:
         """按 UID 获取学习会话。"""
         row = self.db.fetchone(
