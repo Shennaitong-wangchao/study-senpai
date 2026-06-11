@@ -26,6 +26,7 @@
 - 增加质量基线文档，记录发布门禁、secret scan、静态分析口径、已知误报和后续治理路线。
 - 增加 `scripts/quality_triage.py`，用于分流质量分析器 security findings 的阻断项、需审查项和已知噪声。
 - 增加数据库迁移单测，覆盖迁移记录、核心上下文表创建、消息幂等迁移和唯一索引。
+- 扩展 ProductStore 单测，覆盖候选记忆审核/重开、记忆命中统计、Dashboard 登录安全指标和可撤销审计。
 
 ## 0.1.0 - 计划中
 
@@ -59,6 +60,7 @@ All notable Study Senpai changes are documented here. Until release tags are int
 - Added a quality baseline document covering release gates, secret scanning, static-analysis interpretation, known false positives, and follow-up quality work.
 - Added `scripts/quality_triage.py` to classify quality-analyzer security findings into blockers, review-needed items, and known noise.
 - Added database migration tests for migration records, core context table creation, message idempotency backfill, and the unique message index.
+- Expanded ProductStore tests for candidate-memory review/reopen flows, memory hit ranking, Dashboard login security metrics, and undoable action audits.
 
 ## 0.1.0 - Planned
 

@@ -47,7 +47,7 @@ python scripts/dashboard_visual_regression.py
 | `tests/test_product_metrics.py` | 附件上下文、搜索摘要、体验指标评分 |
 | `tests/test_product_planner.py` | 回复规划、搜索/绘图意图、学习模式、边界优先级、节奏判断 |
 | `tests/test_product_search.py` | DuckDuckGo HTML 解析、跳转 URL 还原、搜索失败降级 |
-| `tests/test_product_store.py` | ProductStore 设置、模式状态、后台任务生命周期、日志脱敏 |
+| `tests/test_product_store.py` | ProductStore 设置、模式状态、后台任务、候选记忆、命中统计、Dashboard 安全审计、日志脱敏 |
 | `tests/test_quality_triage.py` | 质量分析器 security findings 的 blocker/review/noise 分流 |
 | `tests/test_reality_context.py` | 现实锚点位置配置、日历来源脱敏、手动日程、天气摘要和上下文块 |
 | `tests/test_release_gate.py` | 发布门禁、私有路径拦截、高置信凭据扫描 |

@@ -4,7 +4,9 @@ from collections.abc import Iterator
 
 import pytest
 
+from src.core.types import ConversationScope
 from src.db.database import Database
+from src.memory.models import LongTermMemoryCandidate
 from src.product.store import ProductStore, _redact_log_line
 
 
@@ -149,6 +151,150 @@ def test_background_task_completion_and_listing(product_store: ProductStore) -> 
     assert completed.status == "completed"
     assert completed.result == {"ok": True}
     assert [task.task_uid for task in listed] == [task_uid]
+
+
+def test_candidate_memory_review_reopen_and_dedupe(product_store: ProductStore) -> None:
+    scope = ConversationScope(
+        platform="discord",
+        conversation_id="conv-1",
+        user_id="user-1",
+        channel_id="channel-1",
+        guild_id=None,
+        session_id="session-1",
+    )
+    candidate = LongTermMemoryCandidate(
+        memory_type="preference",
+        category="study",
+        content="likes quiet evening review",
+        tags=["study"],
+        importance=0.8,
+        confidence=0.7,
+        reason="explicit preference",
+        source_message_ids=[101],
+        metadata={"source": "test"},
+    )
+
+    candidate_uid = product_store.create_candidate_memory(scope, candidate)
+    duplicate_uid = product_store.create_candidate_memory(scope, candidate)
+
+    assert candidate_uid is not None
+    assert duplicate_uid is None
+    pending = product_store.list_candidate_memories(user_id="user-1", status="pending")
+    assert [item.candidate_uid for item in pending] == [candidate_uid]
+    assert pending[0].tags == ["study"]
+    assert pending[0].metadata == {"source": "test"}
+
+    assert (
+        product_store.mark_candidate_reviewed(
+            candidate_uid,
+            status="approved",
+            review_note="promote",
+            approved_memory_uid="mem-1",
+            expected_status="rejected",
+        )
+        is False
+    )
+    assert product_store.mark_candidate_reviewed(candidate_uid, status="rejected", expected_status="pending") is True
+    assert product_store.reopen_candidate_memory(candidate_uid) is True
+    assert product_store.reopen_candidate_memory(candidate_uid) is False
+
+    reopened = product_store.get_candidate_memory(candidate_uid)
+    assert reopened is not None
+    assert reopened.status == "pending"
+    assert reopened.review_note is None
+
+
+def test_memory_hit_tracking_lists_active_memories_by_hit_count(product_store: ProductStore) -> None:
+    now = "2026-06-11T00:00:00+00:00"
+    rows = [
+        ("mem-a", "user-1", "preference", "study", "quiet review", 0.9, 0.8, "active"),
+        ("mem-b", "user-1", "fact", "school", "exam next week", 0.6, 0.7, "active"),
+        ("mem-c", "user-1", "fact", "archived", "old detail", 0.5, 0.6, "archived"),
+    ]
+    product_store.db.executemany(
+        """
+        INSERT INTO long_term_memories (
+            memory_uid, user_id, memory_type, category, content, confidence, importance, status,
+            tags_json, source_message_ids_json, metadata_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '[]', '[]', '{}', ?, ?)
+        """,
+        [(*row, now, now) for row in rows],
+    )
+
+    product_store.record_memory_hits("user-1", ["mem-b"], context_type="search")
+    product_store.record_memory_hits("user-1", ["mem-a", "mem-b", "mem-c"], context_type="reply")
+
+    top_hits = product_store.list_top_memory_hits("user-1")
+
+    assert [item["memory_uid"] for item in top_hits] == ["mem-b", "mem-a"]
+    assert top_hits[0]["hit_count"] == 2
+    assert top_hits[1]["hit_count"] == 1
+
+
+def test_dashboard_security_events_metrics_and_action_audit(product_store: ProductStore) -> None:
+    product_store.record_dashboard_security_event(
+        event_type="login_failure",
+        username="admin",
+        source_ip="198.51.100.10",
+        success=False,
+        details={"reason": "bad code"},
+    )
+    product_store.record_dashboard_security_event(
+        event_type="login_failure",
+        username="admin",
+        source_ip="198.51.100.10",
+        success=False,
+    )
+    product_store.record_dashboard_security_event(
+        event_type="login_success",
+        username="admin",
+        source_ip="198.51.100.11",
+        success=True,
+    )
+
+    lock_status = product_store.get_dashboard_lock_status(
+        source_ip="198.51.100.10",
+        window_seconds=300,
+        max_attempts=2,
+        lockout_seconds=600,
+    )
+    metrics = product_store.get_dashboard_security_metrics(
+        window_seconds=300,
+        max_attempts=2,
+        lockout_seconds=600,
+    )
+    events = product_store.list_dashboard_security_events()
+
+    assert lock_status["locked"] is True
+    assert metrics["failed_last_window"] == 2
+    assert metrics["success_last_window"] == 1
+    assert metrics["locked_sources"][0]["source_ip"] == "198.51.100.10"
+    assert events[-1]["details"] == {"reason": "bad code"}
+
+    audit_uid = product_store.record_dashboard_action_audit(
+        actor_username="admin",
+        source_ip="198.51.100.10",
+        action_type="approve_memory",
+        target_type="candidate_memory",
+        target_id="cand-1",
+        scope_user_id="user-1",
+        scope_conversation_id="conv-1",
+        details={"status": "approved"},
+        undo_available=True,
+        undo_payload={"candidate_uid": "cand-1"},
+    )
+
+    assert product_store.mark_dashboard_action_undone(audit_uid) is True
+    assert product_store.mark_dashboard_action_undone(audit_uid) is False
+    audit = product_store.get_dashboard_action_audit(audit_uid)
+    listed = product_store.list_dashboard_action_audits()
+
+    assert audit is not None
+    assert audit["status"] == "undone"
+    assert audit["undo_available"] is True
+    assert audit["undo_payload"] == {"candidate_uid": "cand-1"}
+    assert listed[0]["audit_uid"] == audit_uid
+    assert listed[0]["details"] == {"status": "approved"}
 
 
 def test_redact_log_line_masks_prompt_context_and_secret_like_values() -> None:
