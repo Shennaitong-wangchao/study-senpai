@@ -1,0 +1,9 @@
+# 默认审查者（替换为实际用户名）
+* @Shennaitong-wangchao
+
+# Personas 目录：欢迎贡献，但需要维护者审查
+/personas/ @Shennaitong-wangchao
+
+# 安全相关文件
+/SECURITY.md @Shennaitong-wangchao
+/src/dashboard/security.py @Shennaitong-wangchao

@@ -29,6 +29,10 @@ dev:  ## 启动开发服务器（仅 Dashboard，RUN_DISCORD_BOT=false）
 dev-discord:  ## 启动含 Discord Bot 的完整服务
 	RUN_DISCORD_BOT=true $(VENV)/bin/python -m src.main
 
+seed-demo:  ## 生成演示数据库（data/demo.sqlite3）
+	$(VENV)/bin/python scripts/seed_demo.py --database data/demo.sqlite3
+	@echo "用 'DATABASE_PATH=data/demo.sqlite3 make dev' 启动演示"
+
 # ── Test ─────────────────────────────────────────────────────────────────────
 
 test:  ## 运行全量测试
