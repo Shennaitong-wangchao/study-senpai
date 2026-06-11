@@ -418,17 +418,17 @@ class StudyService:
 
         # 成就计算
         achievements: list[str] = []
-        # 成就：连续学习天数里程碑（3/7/14/30/100 天）
+        # 成就：连续学习天数里程碑（3/7/14/30/100 天，精确匹配）
         for milestone in (3, 7, 14, 30, 100):
             if streak_days == milestone:
                 achievements.append(f"连续{milestone}天")
-        # 成就：今日复习卡片里程碑（5/10/20/50 张）
-        for milestone in (5, 10, 20, 50):
+        # 成就：今日复习卡片里程碑（从高到低取第一个达标档位）
+        for milestone in (50, 20, 10, 5):
             if reviewed_today >= milestone:
                 achievements.append(f"完成{milestone}张复习")
-                break  # 只取最高档
-        # 成就：专注学习时长里程碑（30/60/120 分钟）
-        for milestone in (30, 60, 120):
+                break
+        # 成就：专注学习时长里程碑（从高到低取第一个达标档位）
+        for milestone in (120, 60, 30):
             if session_minutes >= milestone:
                 achievements.append(f"专注{milestone}分钟")
                 break
@@ -651,3 +651,22 @@ class StudyService:
             "metadata": json_loads(row["metadata_json"], {}),
             "created_at": row["created_at"],
         }
+
+    def list_sessions(
+        self,
+        user_id: str,
+        goal_uid: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """列出学习会话历史，按开始时间倒序。"""
+        if goal_uid:
+            rows = self.db.fetchall(
+                "SELECT * FROM study_sessions WHERE user_id = ? AND goal_uid = ? ORDER BY started_at DESC LIMIT ?",
+                (user_id, goal_uid, limit),
+            )
+        else:
+            rows = self.db.fetchall(
+                "SELECT * FROM study_sessions WHERE user_id = ? ORDER BY started_at DESC LIMIT ?",
+                (user_id, limit),
+            )
+        return [self._session_from_row(r) for r in rows]

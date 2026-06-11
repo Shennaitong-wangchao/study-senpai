@@ -1526,16 +1526,32 @@ def build_dashboard_app(
         overview_payload = product_store.get_overview(user_id=None if scope is None else scope["user_id"])
         overview_payload["active_scope_name"] = None if scope is None else scope["display_name"]
         overview_payload["active_scope_id"] = None if scope is None else scope["conversation_id"]
+
+        # 追加学习系统统计（如果已初始化）
+        try:
+            if scope is not None and study_service is not None:
+                study_stats = study_service.get_study_stats(scope["user_id"])
+                overview_payload["study"] = {
+                    "streak_days": study_stats.get("streak_days", 0),
+                    "due_today": study_stats.get("due_today", 0),
+                    "active_goals": study_stats.get("active_goals", 0),
+                    "mastered_items": study_stats.get("mastered_items", 0),
+                }
+        except Exception:
+            pass  # 学习数据非关键路径
+
         return OverviewResponse(
             active_scope=None if scope is None else ScopeSnapshotModel.model_validate(scope),
             overview=overview_payload,
             quick_links=[
+                {"tab": "study", "label": "📚 学习中心"},
                 {"tab": "search", "label": "全局搜索"},
                 {"tab": "memories", "label": "长期记忆"},
                 {"tab": "candidates", "label": "候选记忆"},
                 {"tab": "shared-diary", "label": "共享日记"},
                 {"tab": "performance", "label": "性能成本"},
                 {"tab": "errors", "label": "错误闭环"},
+                {"tab": "webchat", "label": "💬 聊天"},
             ],
             refreshed_at=iso_utc_now(),
         )
@@ -3557,6 +3573,28 @@ def build_dashboard_app(
         if key == "modes":
             return await modes()
         raise HTTPException(status_code=404, detail=f"unknown dashboard panel: {panel_key}")
+
+    @app.get("/api/study/sessions")
+    async def study_sessions(
+        goal_uid: Optional[str] = None,
+        limit: int = Query(20, ge=1, le=100),
+    ) -> dict:
+        """列出学习会话历史。"""
+        scope = current_scope_snapshot()
+        if scope is None:
+            return {"sessions": [], "refreshed_at": iso_utc_now()}
+        sessions = study_service.list_sessions(scope["user_id"], goal_uid=goal_uid, limit=limit)
+        return {"sessions": sessions, "total": len(sessions), "refreshed_at": iso_utc_now()}
+
+    @app.get("/api/study/summary")
+    async def study_daily_summary() -> dict:
+        """返回当日学习摘要（纯本地计算）。"""
+        scope = current_scope_snapshot()
+        if scope is None:
+            return {"summary": {}, "text": "", "refreshed_at": iso_utc_now()}
+        summary = study_service.generate_daily_summary(scope["user_id"])
+        text = study_service.get_review_summary_text(scope["user_id"])
+        return {"summary": summary, "text": text, "refreshed_at": iso_utc_now()}
 
     class WebChatRequest(BaseModel):
         content: str = ""
