@@ -971,6 +971,39 @@ def build_dashboard_app(
             response = await call_next(request)
             return add_dashboard_headers(response)
 
+    import collections
+    import time as _time
+
+    class SimpleRateLimitMiddleware(BaseHTTPMiddleware):
+        """简单的滑动窗口速率限制：每个 IP 在指定窗口内最多 N 次请求。
+        仅针对写操作（POST/PUT/PATCH/DELETE）以及 /api/chat/stream 端点。
+        """
+        def __init__(self, app, max_requests: int = 60, window_seconds: int = 60) -> None:
+            super().__init__(app)
+            self._buckets: dict = collections.defaultdict(list)
+            self._max = max_requests
+            self._window = window_seconds
+
+        async def dispatch(self, request: Request, call_next):
+            path = request.url.path
+            method = request.method
+            if method not in {"POST", "PUT", "PATCH", "DELETE"} and path != "/api/chat/stream":
+                return await call_next(request)
+            ip = request_source_ip(request)
+            now = _time.monotonic()
+            bucket = self._buckets[ip]
+            # 清理过期记录
+            self._buckets[ip] = [t for t in bucket if now - t < self._window]
+            if len(self._buckets[ip]) >= self._max:
+                return JSONResponse(
+                    {"detail": "rate limit exceeded — try again later"},
+                    status_code=429,
+                    headers={"Retry-After": str(self._window)},
+                )
+            self._buckets[ip].append(now)
+            return await call_next(request)
+
+    app.add_middleware(SimpleRateLimitMiddleware, max_requests=120, window_seconds=60)
     app.add_middleware(DashboardSecurityMiddleware)
     if settings.dashboard_auth_enabled:
         app.add_middleware(
